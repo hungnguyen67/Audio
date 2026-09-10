@@ -5,7 +5,7 @@ function getPageItems(page, pageCount) {
   if (pageCount <= 3) return Array.from({ length: pageCount }, (_, index) => index + 1);
   if (page <= 2) return [1, 2, 3, 'ellipsis-right'];
   if (page >= pageCount - 2) return ['ellipsis-left', pageCount - 2, pageCount - 1, pageCount];
-  return [1, 'ellipsis-left', page, 'ellipsis-right', pageCount];
+  return [1, 'ellipsis-left', page - 1, page, page + 1, 'ellipsis-right', pageCount];
 }
 
 export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChange }) {

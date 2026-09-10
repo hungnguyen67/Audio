@@ -39,6 +39,7 @@ export function Story() {
   const progressTimerRef = useRef(null);
   const progressJobRef = useRef(null);
   const persistTimerRef = useRef(null);
+  const playbackRequestRef = useRef(0);
   const currentChunkRef = useRef(0);
   const resumeRef = useRef({ chunkIndex: 0, positionSeconds: 0 });
   const currentChapterRef = useRef(null);
@@ -130,8 +131,9 @@ export function Story() {
     }).catch(() => {});
   };
 
-  const playUrl = async (url, waitForEnd = false, startAt = 0) => {
+  const playUrl = async (url, waitForEnd = false, startAt = 0, requestId = playbackRequestRef.current) => {
     const audio = audioRef.current;
+    if (!audio || requestId !== playbackRequestRef.current) return;
     const playback = waitForEnd
       ? new Promise((resolve, reject) => {
         const onError = () => reject(new Error('Không tải được đoạn audio.'));
@@ -146,7 +148,12 @@ export function Story() {
     const savedVolume = Number(localStorage.getItem('audio-volume'));
     if (Number.isFinite(savedVolume)) audio.volume = savedVolume;
     audio.playbackRate = speed;
-    await audio.play();
+    try {
+      await audio.play();
+    } catch (error) {
+      if (requestId !== playbackRequestRef.current || error.name === 'AbortError') return;
+      throw error;
+    }
     if (playback) await playback;
   };
 
@@ -166,13 +173,15 @@ export function Story() {
     }
   };
 
-  const playJob = async (jobId, chapterId, resume = resumeRef.current) => {
+  const playJob = async (jobId, chapterId, resume = resumeRef.current, requestId = playbackRequestRef.current) => {
     let nextIndex = resume?.chunkIndex || 0;
     const chunks = [];
     progressJobRef.current = jobId;
     watchJobProgress(jobId).catch(() => {});
     while (true) {
+      if (requestId !== playbackRequestRef.current) return;
       const job = await api(`/api/audio-jobs/${jobId}`);
+      if (requestId !== playbackRequestRef.current) return;
       if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
       (job.completedChunks || []).forEach((chunk) => { chunks[chunk.index] = chunk.url; });
       if (chunks[nextIndex]) {
@@ -182,7 +191,7 @@ export function Story() {
         playingChunkRef.current = true;
         try {
           setStatus(`Đang phát đoạn ${currentIndex + 1}/${job.totalChunks || '?'} | Đã tạo: ${job.completedCount || 0}/${job.totalChunks || '?'}`);
-          await playUrl(chunkUrl, true, currentIndex === resume?.chunkIndex ? resume.positionSeconds : 0);
+          await playUrl(chunkUrl, true, currentIndex === resume?.chunkIndex ? resume.positionSeconds : 0, requestId);
           savePlaybackState(chapterId, nextIndex, 0);
         } finally {
           playingChunkRef.current = false;
@@ -194,7 +203,7 @@ export function Story() {
           setStatus('Đang tạo: 100% | Đã phát xong');
           return;
         }
-        if (job.finalUrl) { await playUrl(job.finalUrl); setStatus('Đang phát'); return; }
+        if (job.finalUrl) { await playUrl(job.finalUrl, false, 0, requestId); setStatus('Đang phát'); return; }
       }
       if (job.totalChunks) {
         const completedChunks = job.completedCount ?? chunks.filter(Boolean).length;
@@ -206,6 +215,11 @@ export function Story() {
   };
 
   const selectChapter = async (chapter, shouldPlay = true) => {
+    const requestId = playbackRequestRef.current + 1;
+    playbackRequestRef.current = requestId;
+    window.clearTimeout(timerRef.current);
+    progressJobRef.current = null;
+    audioRef.current?.pause();
     setSelected(chapter);
     currentChapterRef.current = chapter.id;
     saveStoryProgress(chapter);
@@ -213,18 +227,22 @@ export function Story() {
     setStatus('Đang kiểm tra audio...');
     try {
       const saved = await api(`/api/playback-state/${chapter.id}`);
+      if (requestId !== playbackRequestRef.current) return;
       setVoice(saved.voice);
       setSpeed(saved.playbackRate);
       setVolume(saved.volume);
       resumeRef.current = { chunkIndex: saved.chunkIndex || 0, positionSeconds: saved.positionSeconds || 0 };
       currentChunkRef.current = resumeRef.current.chunkIndex;
       const result = await api(`/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(saved.voice)}`, { method: 'POST' });
+      if (requestId !== playbackRequestRef.current) return;
       if (result.status === 'ready') {
         currentChunkRef.current = 0;
-        await playUrl(result.url, false, resumeRef.current.positionSeconds);
-        setStatus('Đang phát');
-      } else await playJob(result.jobId, chapter.id, resumeRef.current);
-    } catch (error) { setStatus(error.message); }
+        await playUrl(result.url, false, resumeRef.current.positionSeconds, requestId);
+        if (requestId === playbackRequestRef.current) setStatus('Đang phát');
+      } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
+    } catch (error) {
+      if (requestId === playbackRequestRef.current) setStatus(error.message);
+    }
   };
 
   const finishChapter = () => {
