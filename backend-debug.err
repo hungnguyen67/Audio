@@ -1,0 +1,190 @@
+127.0.0.1 - - [10/Sep/2026 16:06:48] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:06:49] "GET /api/chapters/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 52200)
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 692, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 672, in __init__
+    super().__init__(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\socketserver.py", line 761, in __init__
+    self.handle()
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 438, in handle
+    self.handle_one_request()
+  File "C:\Users\Dell\AppData\Local\Programs\Python\Python312\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "D:\Project\BaiTapWeb\Audio\backend\edge_tts_server.py", line 150, in do_PUT
+    self.update_chapter(chapter_match.group(1))
+  File "D:\Project\BaiTapWeb\Audio\backend\edge_tts_server.py", line 308, in update_chapter
+    payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe2 in position 108: invalid continuation byte
+----------------------------------------
+127.0.0.1 - - [10/Sep/2026 16:06:51] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:06:52] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:11] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:12] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:13] "GET /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:17] "PUT /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:17] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:18] "GET /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:20] "GET /api/chapters/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:21] "GET /api/chapters/3413707dadd546319d45483fa2434123 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:49] "POST /api/chapters/3413707dadd546319d45483fa2434123/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:07:49] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:07:50] "POST /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:07:55] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:07:56] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:08:17] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:08:18] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:08:43] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:08:43] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:08:50] "POST /api/chapters/200337c6010a44aa84822cc3221eee5c/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:08:51] "POST /api/chapters/3413707dadd546319d45483fa2434123/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:08:51] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:08:51] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:08:51] "POST /api/chapters/4d69634c5c9446fcbee08729b46c9c4e/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:08:52] "POST /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:52] "POST /api/chapters/200337c6010a44aa84822cc3221eee5c/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:53] "POST /api/chapters/3413707dadd546319d45483fa2434123/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:53] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:53] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:54] "POST /api/chapters/4d69634c5c9446fcbee08729b46c9c4e/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:09:54] "POST /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:10:34] "GET /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:34] "POST /api/chapters/0baa09e96be44088bdf9441f4587dc40/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:34] "GET /api/audio/744083fbf9bb4627888deb34cbfef7f8?t=1789031434550 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:10:37] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:38] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:38] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:42] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:43] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:10:55] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:10:55] "POST /api/chapters/4d69634c5c9446fcbee08729b46c9c4e/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:10:55] "POST /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:10:58] "GET /api/chapters/200337c6010a44aa84822cc3221eee5c HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:10] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:10] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:12] "GET /api/chapters/200337c6010a44aa84822cc3221eee5c HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:14] "GET /api/chapters/9ab3b33815374d9fbb936546246716b9 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:26] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:50] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:50] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:11:56] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:11:56] "POST /api/chapters/9ab3b33815374d9fbb936546246716b9/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:11:56] "POST /api/chapters/fe58b287347042739b1cfec8fca5547f/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:12:01] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:02] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:02] "GET /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:02] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:02] "GET /api/audio/0f55c7c849c24d5199feefa96ae697b8?t=1789031522498 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:12:16] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:16] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:40] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:40] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:12:57] "POST /api/chapters/29714ac018bd45d8916bff9327c9d995/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:12:57] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:12:58] "POST /api/chapters/5291dc708c924301ba1b9288c3710377/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:12:58] "POST /api/chapters/9ab3b33815374d9fbb936546246716b9/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:12:58] "POST /api/chapters/fe58b287347042739b1cfec8fca5547f/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:13:07] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:13:07] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:13:32] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:13:33] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:13:59] "POST /api/chapters/29714ac018bd45d8916bff9327c9d995/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:13:59] "POST /api/chapters/4c975914ada7436dbdcabc3cf5a8d4af/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:13:59] "POST /api/chapters/5291dc708c924301ba1b9288c3710377/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:14:00] "POST /api/chapters/626f6c362de3433a9b74f486bdcae51b/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:14:00] "POST /api/chapters/9ab3b33815374d9fbb936546246716b9/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:14:00] "POST /api/chapters/ecd59ec6f31449bbb2cf1cf0e8d4fb91/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:14:01] "POST /api/chapters/fe58b287347042739b1cfec8fca5547f/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:14:05] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:14:05] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:15:01] "POST /api/chapters/29714ac018bd45d8916bff9327c9d995/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:01] "POST /api/chapters/5291dc708c924301ba1b9288c3710377/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:02] "POST /api/chapters/626f6c362de3433a9b74f486bdcae51b/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:02] "POST /api/chapters/bff3c1fa7c1d432da40d101ac8359d26/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:02] "POST /api/chapters/ecd59ec6f31449bbb2cf1cf0e8d4fb91/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:02] "POST /api/chapters/fe58b287347042739b1cfec8fca5547f/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:15:31] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:15:31] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:15:48] "GET /api/chapters/bff3c1fa7c1d432da40d101ac8359d26 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:15:53] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:15:57] "GET /api/chapters/bff3c1fa7c1d432da40d101ac8359d26 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:02] "GET /api/chapters/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:03] "POST /api/chapters/3077694d076e4813977e31f98ae5f8fb/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:16:04] "POST /api/chapters/626f6c362de3433a9b74f486bdcae51b/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:16:04] "POST /api/chapters/bff3c1fa7c1d432da40d101ac8359d26/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:16:04] "POST /api/chapters/ecd59ec6f31449bbb2cf1cf0e8d4fb91/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:16:06] "GET /api/chapters/bff3c1fa7c1d432da40d101ac8359d26 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:12] "GET /api/chapters/626f6c362de3433a9b74f486bdcae51b HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:27] "GET /api/chapters/bff3c1fa7c1d432da40d101ac8359d26 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:36] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:40] "GET /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:48] "PUT /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:49] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:51] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:58] "PUT /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:16:58] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:05] "POST /api/chapters/3077694d076e4813977e31f98ae5f8fb/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:17:05] "POST /api/chapters/626f6c362de3433a9b74f486bdcae51b/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:17:06] "POST /api/chapters/bff3c1fa7c1d432da40d101ac8359d26/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:17:22] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:23] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:33] code 404, message Not Found
+127.0.0.1 - - [10/Sep/2026 16:17:33] "PUT /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 404 -
+127.0.0.1 - - [10/Sep/2026 16:17:33] "GET /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:34] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:34] "GET /api/audio/0f55c7c849c24d5199feefa96ae697b8?t=1789031854088 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:35] "PUT /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:37] code 404, message Not Found
+127.0.0.1 - - [10/Sep/2026 16:17:37] "PUT /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 404 -
+127.0.0.1 - - [10/Sep/2026 16:17:38] "GET /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:38] "POST /api/chapters/0baa09e96be44088bdf9441f4587dc40/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:39] "GET /api/audio/744083fbf9bb4627888deb34cbfef7f8?t=1789031858655 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:39] "GET /api/audio/744083fbf9bb4627888deb34cbfef7f8?t=1789031858655 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:40] "GET /api/audio/744083fbf9bb4627888deb34cbfef7f8?t=1789031858655 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:40] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:40] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:40] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:40] code 404, message Not Found
+127.0.0.1 - - [10/Sep/2026 16:17:40] "PUT /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 404 -
+127.0.0.1 - - [10/Sep/2026 16:17:41] "GET /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:41] "PUT /api/playback-state/0baa09e96be44088bdf9441f4587dc40 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:41] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:42] "GET /api/audio/0f55c7c849c24d5199feefa96ae697b8?t=1789031861634 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:42] "PUT /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:45] code 404, message Not Found
+127.0.0.1 - - [10/Sep/2026 16:17:45] "PUT /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 404 -
+127.0.0.1 - - [10/Sep/2026 16:17:45] "GET /api/playback-state/5fecb736fd1c4d23abc508b9ae4f6d50 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:46] "POST /api/chapters/5fecb736fd1c4d23abc508b9ae4f6d50/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:46] "GET /api/audio/dd587b1a41d540219f3e613ea9b071cd?t=1789031866120 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:48] code 404, message Not Found
+127.0.0.1 - - [10/Sep/2026 16:17:48] "PUT /api/story-progress/763463b9fc804fe29728020909b59cc6 HTTP/1.1" 404 -
+127.0.0.1 - - [10/Sep/2026 16:17:49] "GET /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:49] "POST /api/chapters/4c0bfc3bdc6446c6a9144654931ae6a6/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:49] "GET /api/audio/0f55c7c849c24d5199feefa96ae697b8?t=1789031869649 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:17:50] "PUT /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:51] "PUT /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:51] "PUT /api/playback-state/4c0bfc3bdc6446c6a9144654931ae6a6 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:17:56] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:18:06] "POST /api/chapters/3077694d076e4813977e31f98ae5f8fb/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:18:07] "POST /api/chapters/626f6c362de3433a9b74f486bdcae51b/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:18:07] "POST /api/chapters/bff3c1fa7c1d432da40d101ac8359d26/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:18:11] "GET /api/chapters/bff3c1fa7c1d432da40d101ac8359d26 HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:18:13] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:18:40] "PUT /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:18:41] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:18:42] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:02] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:08] "POST /api/chapters/3077694d076e4813977e31f98ae5f8fb/audio-jobs?voice=edge%3Avi-VN-HoaiMyNeural HTTP/1.1" 202 -
+127.0.0.1 - - [10/Sep/2026 16:19:13] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:14] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:17] "GET /api/chapters/3077694d076e4813977e31f98ae5f8fb HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:39] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:39] "GET /api/stories HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:48] "GET /api/audio/0f55c7c849c24d5199feefa96ae697b8?t=1789031869649 HTTP/1.1" 206 -
+127.0.0.1 - - [10/Sep/2026 16:19:55] "POST /api/chapters HTTP/1.1" 200 -
+127.0.0.1 - - [10/Sep/2026 16:19:55] "GET /api/stories HTTP/1.1" 200 -

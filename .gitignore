@@ -1,0 +1,8 @@
+node_modules/
+frontend-dist/
+*.pyc
+__pycache__/
+.venv/
+.env
+start.ps1
+backend/google-credentials.json
