@@ -6,3 +6,4 @@ __pycache__/
 .env
 start.ps1
 backend/google-credentials.json
+.vscode
