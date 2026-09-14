@@ -4,7 +4,6 @@ import json
 import re
 import sys
 import threading
-from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import uuid
 from http import HTTPStatus
@@ -494,7 +493,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 job_id = uuid.uuid4().hex
                 AUDIO_JOBS_BY_KEY[job_key] = job_id
                 CHUNK_JOBS[job_id] = {"status": "processing", "completedChunks": [], "completedCount": 0, "totalChunks": 0, "voice": voice}
-            threading.Thread(target=self.run_chunk_job, args=(job_id, job_key, cache_id, chapter_id, voice, content_hash, chapter["content"]), daemon=True).start()
+            threading.Thread(target=self.run_chunk_job, args=(job_id, job_key, cache_id, chapter_id, voice, chapter["content"]), daemon=True).start()
             self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": job_id})
         except Exception as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Không khởi động được audio: {error}"})
@@ -543,7 +542,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         results.sort(key=lambda item: item[0])
         return results
 
-    def run_chunk_job(self, job_id, job_key, cache_id, chapter_id, voice, content_hash, content):
+    def run_chunk_job(self, job_id, job_key, cache_id, chapter_id, voice, content):
         chunks = self.split_content(content)
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["totalChunks"] = len(chunks)
