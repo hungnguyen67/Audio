@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Download } from 'lucide-react';
 import { Pagination } from '../shared/Pagination';
 import { Select } from '../shared/Select';
 import { requestJson } from '../shared/api';
@@ -45,9 +44,6 @@ export function Story() {
   const [speed, setSpeed] = useState(Number(localStorage.getItem('audio-playback-rate') || 1));
   const [autoNext, setAutoNext] = useState(localStorage.getItem('audio-auto-next') === 'true');
   const [volume, setVolume] = useState(Number(localStorage.getItem('audio-volume') ?? 1));
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadStatus, setDownloadStatus] = useState('');
-  const [downloadReady, setDownloadReady] = useState(null);
   const [chapterPage, setChapterPage] = useState(1);
   const [chapterPageSize, setChapterPageSize] = useState(5);
   const [status, setStatus] = useState('Vui lòng chọn một chương để bắt đầu nghe');
@@ -87,10 +83,6 @@ export function Story() {
     if (Number.isFinite(savedVolume)) setVolume(savedVolume);
   }, []);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
-  useEffect(() => {
-    setDownloadReady(null);
-    setDownloadStatus('');
-  }, [selected?.id, voice]);
 
   const savePlaybackStateNow = (chapterId, chunkIndex = currentChunkRef.current, positionSeconds = 0) => {
     if (!chapterId) return;
@@ -245,61 +237,6 @@ export function Story() {
       } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
     } catch (error) {
       if (requestId === playbackRequestRef.current) setStatus(error.message);
-    }
-  };
-
-  const downloadAudio = async () => {
-    if (!selected || isDownloading) return;
-    if (downloadReady?.chapterId === selected.id && downloadReady.voice === voice) {
-      const link = document.createElement('a');
-      link.href = `${downloadReady.url}${downloadReady.url.includes('?') ? '&' : '?'}download=1`;
-      link.download = `chapter-${selected.number}.mp3`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      return;
-    }
-
-    const chapter = selected;
-    const requestedVoice = voice;
-    setIsDownloading(true);
-    setDownloadStatus('Đang kiểm tra audio...');
-
-    try {
-      const result = await requestJson(
-        `/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(requestedVoice)}`,
-        { method: 'POST' },
-      );
-      let downloadUrl = result.url;
-
-      if (result.status !== 'ready') {
-        if (!result.jobId) throw new Error('Không nhận được mã tác vụ tạo audio.');
-        while (true) {
-          const job = await requestJson(`/api/audio-jobs/${result.jobId}`);
-          if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
-          if (job.status === 'completed') {
-            if (!job.finalUrl) throw new Error('Tạo xong nhưng không tìm thấy file audio.');
-            downloadUrl = job.finalUrl;
-            break;
-          }
-
-          const completed = job.completedCount ?? 0;
-          const total = job.totalChunks ?? 0;
-          setDownloadStatus(
-            total
-              ? `Đang tạo audio để tải: ${completed}/${total} đoạn`
-              : 'Đang tạo audio để tải...',
-          );
-          await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        }
-      }
-
-      setDownloadReady({ chapterId: chapter.id, voice: requestedVoice, url: downloadUrl });
-      setDownloadStatus('Audio đã sẵn sàng. Nhấn "Tải MP3" để lưu file.');
-    } catch (error) {
-      setDownloadStatus(error.message);
-    } finally {
-      setIsDownloading(false);
     }
   };
 
@@ -463,21 +400,6 @@ export function Story() {
                   onVolumeChange={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
                   onInput={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
                 />
-                <button
-                  type="button"
-                  className="btn btn-outline"
-                  style={{ width: '100%', marginTop: 12 }}
-                  disabled={!selected || isDownloading}
-                  onClick={downloadAudio}
-                >
-                  <Download size={15} />
-                  {isDownloading
-                    ? 'Đang chờ audio...'
-                    : downloadReady?.chapterId === selected?.id && downloadReady?.voice === voice
-                      ? 'Tải MP3'
-                      : 'Chuẩn bị tải audio'}
-                </button>
-                {downloadStatus && <div className="player-status" role="status" style={{ margin: '8px 0 0' }}>{downloadStatus}</div>}
                 <label className="volume-control">
                   <span>Âm lượng</span>
                   <input

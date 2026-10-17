@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter } from '../store';
 import { Pagination } from '../shared/Pagination';
 import { toast } from '../shared/Toast';
 import { requestJson } from '../shared/api';
+import { splitTextIntoChapters } from '../shared/textChapters';
+
+function isDuplicateChapterNumberError(error) {
+  return /duplicate entry .* for key ['`]?chapters\.unique_story_chapter/i.test(error?.message || '');
+}
 
 function HeadphonesIcon() {
   return (
@@ -41,6 +46,7 @@ export function Admin() {
   const [form, setForm] = useState({ story: '', number: '', title: '', content: '' });
   const [importUrl, setImportUrl] = useState(() => localStorage.getItem('audio-story:lastChapterImportUrl') || '');
   const [importing, setImporting] = useState(false);
+  const textFileInput = useRef(null);
   const [importStatus, setImportStatus] = useState('');
   const [importFromChapter, setImportFromChapter] = useState('1');
   const [importToChapter, setImportToChapter] = useState('1');
@@ -50,8 +56,23 @@ export function Admin() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [checkedChapterIds, setCheckedChapterIds] = useState([]);
+  const [bulkDeletingChapters, setBulkDeletingChapters] = useState(false);
+  const chapterSelectionDrag = useRef(null);
   const selected = stories.find((s) => s.id === storyId);
   const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    const stopChapterSelection = () => {
+      chapterSelectionDrag.current = null;
+    };
+    window.addEventListener('pointerup', stopChapterSelection);
+    window.addEventListener('pointercancel', stopChapterSelection);
+    return () => {
+      window.removeEventListener('pointerup', stopChapterSelection);
+      window.removeEventListener('pointercancel', stopChapterSelection);
+    };
+  }, []);
 
   const now = new Date();
   const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
@@ -67,6 +88,7 @@ export function Admin() {
     setImportToChapter('1');
     setImportedChapters([]);
     setMergedSourceCount(0);
+    setCheckedChapterIds([]);
     if (chapter) {
       try {
         const data = await requestJson(`/api/chapters/${chapter.id}`);
@@ -86,6 +108,7 @@ export function Admin() {
     setImportToChapter('1');
     setImportedChapters([]);
     setMergedSourceCount(0);
+    setCheckedChapterIds([]);
   };
 
   const closeForm = () => {
@@ -99,6 +122,7 @@ export function Admin() {
     setImportToChapter('1');
     setImportedChapters([]);
     setMergedSourceCount(0);
+    setCheckedChapterIds([]);
   };
 
   const cancelEdit = () => {
@@ -127,12 +151,26 @@ export function Admin() {
       setImportStatus('Link chương không hợp lệ.');
       return;
     }
-    if (chapterUrl.protocol !== 'https:' || chapterUrl.hostname !== 'metruyenchu.co' || !/\/chuong-\d+\/?$/i.test(chapterUrl.pathname)) {
-      setImportStatus('Hãy dùng link HTTPS metruyenchu.co có dạng .../chuong-1.');
+    const isMetruyenchuUrl =
+      chapterUrl.hostname === 'metruyenchu.co' && /\/chuong-\d+\/?$/i.test(chapterUrl.pathname);
+    const isTruyenHUrl =
+      chapterUrl.hostname === 'truyen-h.com' &&
+      chapterUrl.pathname === '/reader' &&
+      /^[A-Za-z0-9_-]{1,200}$/.test(chapterUrl.searchParams.get('story') || '') &&
+      /^\d+$/.test(chapterUrl.searchParams.get('chapter') || '');
+    if (
+      chapterUrl.protocol !== 'https:' ||
+      (chapterUrl.port && chapterUrl.port !== '443') ||
+      chapterUrl.username ||
+      chapterUrl.password ||
+      (!isMetruyenchuUrl && !isTruyenHUrl)
+    ) {
+      setImportStatus('Hãy dùng link HTTPS metruyenchu.co/.../chuong-1 hoặc truyen-h.com/reader?story=...&chapter=1.');
       return;
     }
     localStorage.setItem('audio-story:lastChapterImportUrl', importUrl.trim());
-    const chapterPath = chapterUrl.pathname.replace(/\/chuong-\d+\/?$/i, '');
+    const isTruyenH = chapterUrl.hostname === 'truyen-h.com';
+    const chapterPath = isTruyenH ? '' : chapterUrl.pathname.replace(/\/chuong-\d+\/?$/i, '');
     const importingRange = fromChapter !== toChapter;
     if ((form.content.trim() || importedChapters.length) && !window.confirm('Lấy chương mới sẽ thay thế nội dung hoặc danh sách chương đang chờ. Tiếp tục?')) return;
 
@@ -143,7 +181,11 @@ export function Admin() {
     try {
       for (let chapterNumber = fromChapter; chapterNumber <= toChapter; chapterNumber += 1) {
         setImportStatus(`Đang lấy chương ${chapterNumber}/${toChapter}...`);
-        chapterUrl.pathname = `${chapterPath}/chuong-${chapterNumber}`;
+        if (isTruyenH) {
+          chapterUrl.searchParams.set('chapter', String(chapterNumber));
+        } else {
+          chapterUrl.pathname = `${chapterPath}/chuong-${chapterNumber}`;
+        }
         const chapter = await requestJson('/api/import-chapter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -159,6 +201,7 @@ export function Admin() {
           title: chapters[0].title || `Chương ${fromChapter}`,
           content: chapters.map((chapter) => chapter.content).join('\n\n'),
         };
+
         setImportedChapters([mergedChapter]);
         setMergedSourceCount(chapters.length);
         setForm((previous) => ({
@@ -201,8 +244,46 @@ export function Admin() {
         }));
         setImportStatus(`Đã gộp ${chapters.length} chương thành 1 tập; dừng tại chương ${fromChapter + chapters.length}: ${err.message}`);
       } else {
-        setImportStatus(err.message);
+        const chapterNumber = fromChapter + chapters.length;
+        const sourceError = err.message === 'Không tìm thấy dữ liệu chương trên trang Truyện H.'
+          ? 'Truyện H không gửi nội dung chương; nguồn đang yêu cầu xác minh chống bot hoặc đăng nhập. Hãy mở chương trên trang nguồn rồi dán nội dung vào form.'
+          : err.message;
+        setImportStatus(`${sourceError} (lỗi tại chương ${chapterNumber})`);
       }
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const importTextFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (form.content.trim() || importedChapters.length) {
+      if (!window.confirm('Nhập tệp TXT sẽ thay thế nội dung hoặc danh sách chương đang chờ. Tiếp tục?')) return;
+    }
+
+    setImporting(true);
+    setImportedChapters([]);
+    setMergedSourceCount(0);
+    setImportStatus(`Đang đọc ${file.name}...`);
+    try {
+      const chapters = splitTextIntoChapters(await file.text());
+      if (!chapters.length) {
+        setImportStatus('Không tìm thấy tiêu đề chương. Hãy dùng các dòng như "Chương 1: Tên chương" trong tệp TXT.');
+        return;
+      }
+      setImportedChapters(chapters);
+      setForm((previous) => ({
+        ...previous,
+        story: previous.story.trim() ? previous.story : file.name.replace(/\.txt$/i, ''),
+        number: String(chapters[0].chapterNumber),
+        title: chapters[0].title,
+        content: '',
+      }));
+      setImportStatus(`Đã tách ${chapters.length} chương từ tệp TXT. Kiểm tra danh sách rồi bấm Lưu.`);
+    } catch (error) {
+      setImportStatus(`Không thể đọc tệp TXT: ${error.message}`);
     } finally {
       setImporting(false);
     }
@@ -222,8 +303,10 @@ export function Admin() {
     setStatus('Đang chuẩn bị lưu chương...');
     let id = storyId;
     let savedCount = 0;
+    let skippedCount = 0;
     let pendingChapters = importedChapters;
     const totalCount = importedChapters.length;
+    const existingChapterNumbers = new Set((selected?.chapters || []).map((chapter) => chapter.number));
     try {
       if (!id) {
         id = (await dispatch(createStory(form.story.trim())).unwrap()).id;
@@ -233,14 +316,27 @@ export function Admin() {
       while (pendingChapters.length) {
         const chapter = pendingChapters[0];
         const chapterNumber = mergedSourceCount ? Number(form.number) : chapter.chapterNumber;
-        setStatus(`Đang lưu ${mergedSourceCount ? 'tập' : 'chương'} ${chapterNumber} (${savedCount + 1}/${totalCount})...`);
-        await dispatch(saveChapter({
-          storyId: id,
-          chapterNumber,
-          title: mergedSourceCount ? form.title.trim() : chapter.title || `Chương ${chapterNumber}`,
-          content: mergedSourceCount ? form.content.trim() : chapter.content,
-        })).unwrap();
-        savedCount += 1;
+        const chapterLabel = mergedSourceCount ? 'tập' : 'chương';
+        if (existingChapterNumbers.has(chapterNumber)) {
+          skippedCount += 1;
+          setStatus(`Bỏ qua ${chapterLabel} ${chapterNumber} vì đã tồn tại (${savedCount + skippedCount}/${totalCount})...`);
+        } else {
+          setStatus(`Đang lưu ${chapterLabel} ${chapterNumber} (${savedCount + skippedCount + 1}/${totalCount})...`);
+          try {
+            await dispatch(saveChapter({
+              storyId: id,
+              chapterNumber,
+              title: mergedSourceCount ? form.title.trim() : chapter.title || `Chương ${chapterNumber}`,
+              content: mergedSourceCount ? form.content.trim() : chapter.content,
+            })).unwrap();
+            savedCount += 1;
+          } catch (error) {
+            if (!isDuplicateChapterNumberError(error)) throw error;
+            skippedCount += 1;
+            setStatus(`Bỏ qua ${chapterLabel} ${chapterNumber} vì đã tồn tại (${savedCount + skippedCount}/${totalCount})...`);
+          }
+          existingChapterNumbers.add(chapterNumber);
+        }
         pendingChapters = pendingChapters.slice(1);
         setImportedChapters(pendingChapters);
       }
@@ -248,13 +344,14 @@ export function Admin() {
       await dispatch(fetchStories());
       setEditing(null);
       setForm((previous) => ({ ...previous, number: '', title: '', content: '' }));
-      setStatus(`Đã lưu ${savedCount} tập thành công${mergedSourceCount ? ` (gộp từ ${mergedSourceCount} chương nguồn)` : ''}.`);
-      toast.success('Đã lưu thành công', mergedSourceCount
-        ? `1 tập gộp từ ${mergedSourceCount} chương nguồn đã được thêm vào truyện.`
-        : `${savedCount} chương đã được thêm vào truyện.`);
+      const skippedMessage = skippedCount ? ` Bỏ qua ${skippedCount} chương trùng số.` : '';
+      setStatus(`Đã lưu ${savedCount} ${mergedSourceCount ? 'tập' : 'chương'} thành công.${skippedMessage}${mergedSourceCount ? ` (gộp từ ${mergedSourceCount} chương nguồn)` : ''}`);
+      toast.success(skippedCount ? 'Đã lưu, bỏ qua chương trùng' : 'Đã lưu thành công', mergedSourceCount
+        ? `${savedCount} tập gộp từ ${mergedSourceCount} chương nguồn đã được thêm vào truyện.${skippedMessage}`
+        : `${savedCount} chương đã được thêm vào truyện.${skippedMessage}`);
       setMergedSourceCount(0);
     } catch (err) {
-      setStatus(`Đã lưu ${savedCount} ${mergedSourceCount ? 'tập' : 'chương'}; còn ${pendingChapters.length} mục chưa lưu. ${err.message}`);
+      setStatus(`Đã lưu ${savedCount}, bỏ qua ${skippedCount}; còn ${pendingChapters.length} mục chưa xử lý. ${err.message}`);
       toast.error('Không thể lưu hết chương', err.message);
     } finally {
       setSavingImportedChapters(false);
@@ -310,6 +407,7 @@ export function Admin() {
       await dispatch(deleteChapter(id)).unwrap();
       dispatch(fetchStories());
       setPendingDelete(null);
+      setCheckedChapterIds((ids) => ids.filter((chapterId) => chapterId !== id));
       if (editing?.id === id) setEditing(null);
       toast.success(`Đã xóa chương ${chapter?.number || ''}`.trim(), chapter
         ? `"${chapter.title}" đã được xóa khỏi truyện "${selected?.title || ''}".`
@@ -317,6 +415,57 @@ export function Admin() {
     } catch (err) {
       toast.error('Không thể xóa chương', err.message);
     }
+  };
+
+  const deleteSelectedChapters = async () => {
+    const chapters = (selected?.chapters || []).filter((chapter) => checkedChapterIds.includes(chapter.id));
+    if (!chapters.length || bulkDeletingChapters) return;
+    const confirmed = window.confirm(`Xóa vĩnh viễn ${chapters.length} chương đã chọn khỏi truyện "${selected.title}"?`);
+    if (!confirmed) return;
+
+    setBulkDeletingChapters(true);
+    const deletedIds = [];
+    const failures = [];
+    try {
+      for (const chapter of chapters) {
+        try {
+          await dispatch(deleteChapter(chapter.id)).unwrap();
+          deletedIds.push(chapter.id);
+        } catch (error) {
+          failures.push({ chapter, error });
+        }
+      }
+
+      setCheckedChapterIds(failures.map(({ chapter }) => chapter.id));
+      if (editing && deletedIds.includes(editing.id)) setEditing(null);
+      await dispatch(fetchStories()).unwrap();
+      if (failures.length) {
+        const firstFailure = failures[0];
+        toast.error(
+          `Đã xóa ${deletedIds.length}/${chapters.length} chương`,
+          `Không xóa được chương ${firstFailure.chapter.number}: ${firstFailure.error.message}`,
+        );
+      } else {
+        toast.success('Đã xóa hàng loạt', `${deletedIds.length} chương đã được xóa khỏi truyện "${selected.title}".`);
+      }
+    } catch (error) {
+      toast.error(`Đã xóa ${deletedIds.length}/${chapters.length} chương`, `Không thể làm mới danh sách chương: ${error.message}`);
+    } finally {
+      setBulkDeletingChapters(false);
+    }
+  };
+
+  const toggleChapterSelection = (chapterId) => {
+    setCheckedChapterIds((ids) => ids.includes(chapterId)
+      ? ids.filter((id) => id !== chapterId)
+      : [...ids, chapterId]);
+  };
+
+  const setChapterChecked = (chapterId, checked) => {
+    setCheckedChapterIds((ids) => {
+      if (ids.includes(chapterId) === checked) return ids;
+      return checked ? [...ids, chapterId] : ids.filter((id) => id !== chapterId);
+    });
   };
 
   const requestDelete = (type, id) => {
@@ -431,7 +580,7 @@ export function Admin() {
                                 setImportUrl(event.target.value);
                                 localStorage.setItem('audio-story:lastChapterImportUrl', event.target.value);
                               }}
-                              placeholder="https://metruyenchu.co/truyen/.../chuong-1"
+                              placeholder="https://metruyenchu.co/.../chuong-1 hoặc https://truyen-h.com/reader?story=...&chapter=1"
                               disabled={importing || savingImportedChapters}
                             />
                           </div>
@@ -464,6 +613,23 @@ export function Admin() {
                           </button>
                         </div>
                         {importStatus && <div className="form-msg" aria-live="polite">{importStatus}</div>}
+                        <input
+                          ref={textFileInput}
+                          type="file"
+                          accept=".txt,text/plain"
+                          hidden
+                          onChange={importTextFile}
+                          disabled={importing || savingImportedChapters}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ marginTop: 8 }}
+                          onClick={() => textFileInput.current?.click()}
+                          disabled={importing || savingImportedChapters}
+                        >
+                          {importing ? 'Đang đọc TXT...' : 'Tách chương từ tệp TXT'}
+                        </button>
                       </div>
                     )}
                     <div className="form-group">
@@ -525,10 +691,63 @@ export function Admin() {
 
                 {selected && selected.chapters.length > 0 && (
                   <div className="ch-sub-list">
-                    <div className="ch-sub-head">Các chương hiện có</div>
+                    <div className="ch-sub-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span>Các chương hiện có ({checkedChapterIds.length} đã chọn)</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-small-action"
+                          onClick={() => setCheckedChapterIds(selected.chapters.map((chapter) => chapter.id))}
+                          disabled={bulkDeletingChapters || checkedChapterIds.length === selected.chapters.length}
+                        >
+                          Chọn tất cả
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-small-action"
+                          onClick={() => setCheckedChapterIds([])}
+                          disabled={bulkDeletingChapters || !checkedChapterIds.length}
+                        >
+                          Bỏ chọn
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-small-action"
+                          onClick={deleteSelectedChapters}
+                          disabled={bulkDeletingChapters || !checkedChapterIds.length}
+                        >
+                          {bulkDeletingChapters ? 'Đang xóa...' : `Xóa đã chọn (${checkedChapterIds.length})`}
+                        </button>
+                      </div>
+                    </div>
                     <div className="ch-sub-items">
                       {[...selected.chapters].sort((first, second) => second.number - first.number).map((chapter) => (
-                        <div key={chapter.id} className="ch-sub-item">
+                        <div
+                          key={chapter.id}
+                          className="ch-sub-item"
+                          onPointerEnter={(event) => {
+                            if (chapterSelectionDrag.current !== null && event.buttons === 1) {
+                              setChapterChecked(chapter.id, chapterSelectionDrag.current);
+                            }
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            aria-label={`Chọn chương ${chapter.number}: ${chapter.title}`}
+                            checked={checkedChapterIds.includes(chapter.id)}
+                            onPointerDown={(event) => {
+                              if (event.button !== 0 || bulkDeletingChapters) return;
+                              event.preventDefault();
+                              const shouldSelect = !checkedChapterIds.includes(chapter.id);
+                              chapterSelectionDrag.current = shouldSelect;
+                              setChapterChecked(chapter.id, shouldSelect);
+                            }}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (event.detail === 0) toggleChapterSelection(chapter.id);
+                            }}
+                            disabled={bulkDeletingChapters}
+                          />
                           <span style={{ fontSize: 12, color: '#94a3b8', fontVariantNumeric: 'tabular-nums', minWidth: 28 }}>
                             {String(chapter.number).padStart(2, '0')}
                           </span>
@@ -539,7 +758,7 @@ export function Admin() {
                           >
                             {chapter.title}
                           </button>
-                          <button className="btn-small-action" onClick={() => requestDelete('chapter', chapter.id)}>
+                          <button className="btn-small-action" onClick={() => requestDelete('chapter', chapter.id)} disabled={bulkDeletingChapters}>
                             {pendingDelete === `chapter:${chapter.id}` ? 'Tiếp' : 'Xóa'}
                           </button>
                         </div>

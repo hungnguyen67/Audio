@@ -41,9 +41,13 @@ AUDIO_JOBS_BY_KEY = {}
 AUDIO_JOB_START_LOCK = threading.Lock()
 EDGE_TTS_JOB_LOCK = threading.Lock()
 AUTO_AUDIO_INTERVAL_SECONDS = 60
+AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_CONCURRENCY = 2
+EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 120
 CHAPTER_URL_PATTERN = re.compile(r"^/truyen/[^/]+/chuong-(\d+)/?$", re.IGNORECASE)
+TRUYEN_H_HOST = "truyen-h.com"
+METRUYENCHU_HOST = "metruyenchu.co"
 MAX_CHAPTER_PAGE_BYTES = 5 * 1024 * 1024
 CHAPTER_PAGE_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -90,33 +94,84 @@ class ChapterPageParser(HTMLParser):
 
 
 class SameHostRedirectHandler(HTTPRedirectHandler):
+    def __init__(self, allowed_host):
+        super().__init__()
+        self.allowed_host = allowed_host
+
     def redirect_request(self, request, response, code, message, headers, new_url):
         redirected_url = urlsplit(new_url)
         if (
             redirected_url.scheme != "https"
-            or redirected_url.hostname != "metruyenchu.co"
+            or redirected_url.hostname != self.allowed_host
             or redirected_url.port not in (None, 443)
             or redirected_url.username
             or redirected_url.password
         ):
-            raise ValueError("Trang chương chuyển hướng ra ngoài metruyenchu.co; đã hủy để bảo vệ kết nối.")
+            raise ValueError(f"Trang chương chuyển hướng ra ngoài {self.allowed_host}; đã hủy để bảo vệ kết nối.")
         return super().redirect_request(request, response, code, message, headers, new_url)
+
+
+def extract_truyen_h_reader_data(html):
+    marker = "window.SSR_READER"
+    marker_index = html.find(marker)
+    if marker_index < 0:
+        raise RuntimeError(
+            "Truyện H không gửi nội dung chương trong phản hồi; nguồn yêu cầu xác minh chống bot "
+            "hoặc đăng nhập. Hãy dán nội dung chương vào form nếu importer không truy cập được."
+        )
+
+    assignment_index = marker_index + len(marker)
+    while assignment_index < len(html) and html[assignment_index].isspace():
+        assignment_index += 1
+    if assignment_index >= len(html) or html[assignment_index] != "=":
+        raise RuntimeError("Dữ liệu chương trên trang Truyện H không hợp lệ.")
+
+    assignment_index += 1
+    while assignment_index < len(html) and html[assignment_index].isspace():
+        assignment_index += 1
+    try:
+        reader_data, _ = json.JSONDecoder().raw_decode(html, assignment_index)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Không thể đọc dữ liệu chương trên trang Truyện H.") from error
+    if not isinstance(reader_data, dict):
+        raise RuntimeError("Dữ liệu chương trên trang Truyện H không hợp lệ.")
+    return reader_data
 
 
 def fetch_chapter_from_url(url):
     parsed_url = urlsplit(url)
-    chapter_match = CHAPTER_URL_PATTERN.fullmatch(parsed_url.path)
     if (
         parsed_url.scheme != "https"
-        or parsed_url.hostname != "metruyenchu.co"
         or parsed_url.port not in (None, 443)
         or parsed_url.username
         or parsed_url.password
-        or not chapter_match
     ):
-        raise ValueError("Link không hợp lệ. Hãy dùng link chương dạng https://metruyenchu.co/truyen/ten-truyen/chuong-1")
+        raise ValueError("Link chương phải dùng HTTPS và không được chứa thông tin đăng nhập.")
 
-    chapter_number = int(chapter_match.group(1))
+    if parsed_url.hostname == METRUYENCHU_HOST:
+        chapter_match = CHAPTER_URL_PATTERN.fullmatch(parsed_url.path)
+        if not chapter_match:
+            raise ValueError(
+                "Link không hợp lệ. Hãy dùng https://metruyenchu.co/truyen/ten-truyen/chuong-1"
+            )
+        chapter_number = int(chapter_match.group(1))
+    elif parsed_url.hostname == TRUYEN_H_HOST:
+        if parsed_url.path != "/reader":
+            raise ValueError("Link Truyện H phải có dạng https://truyen-h.com/reader?story=...&chapter=1")
+        query = parse_qs(parsed_url.query, keep_blank_values=True)
+        story_ids = query.get("story", [])
+        chapter_numbers = query.get("chapter", [])
+        if (
+            len(story_ids) != 1
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", story_ids[0])
+            or len(chapter_numbers) != 1
+            or not chapter_numbers[0].isdigit()
+        ):
+            raise ValueError("Link Truyện H cần có mã truyện story và số chương chapter hợp lệ.")
+        chapter_number = int(chapter_numbers[0])
+    else:
+        raise ValueError("Chỉ hỗ trợ link HTTPS từ metruyenchu.co hoặc truyen-h.com.")
+
     if chapter_number < 1:
         raise ValueError("Số chương trong link phải lớn hơn 0.")
 
@@ -129,7 +184,7 @@ def fetch_chapter_from_url(url):
         },
     )
     try:
-        with build_opener(SameHostRedirectHandler()).open(request, timeout=20) as response:
+        with build_opener(SameHostRedirectHandler(parsed_url.hostname)).open(request, timeout=20) as response:
             if response.status != HTTPStatus.OK:
                 raise RuntimeError(f"Trang nguồn trả về HTTP {response.status}.")
             if response.headers.get_content_type() != "text/html":
@@ -143,18 +198,38 @@ def fetch_chapter_from_url(url):
     except URLError as error:
         raise RuntimeError(f"Không kết nối được trang nguồn: {error.reason}.") from error
 
-    parser = ChapterPageParser()
-    parser.feed(html.decode(encoding, errors="replace"))
-    content = "\n\n".join(parser.paragraphs)
-    if not parser.paragraphs or len(content) < 100:
+    decoded_html = html.decode(encoding, errors="replace")
+    if parsed_url.hostname == TRUYEN_H_HOST:
+        reader_data = extract_truyen_h_reader_data(decoded_html)
+        source_chapter_number = reader_data.get("chapterNum")
+        if not isinstance(source_chapter_number, int) or source_chapter_number != chapter_number:
+            raise RuntimeError("Số chương trong dữ liệu trang Truyện H không khớp với link.")
+        content = reader_data.get("chapterContent")
+        if not isinstance(content, str):
+            raise RuntimeError("Không tìm thấy nội dung chương trên trang Truyện H.")
+        content = re.sub(r"[ \t]+\n", "\n", content.replace("\r\n", "\n").replace("\r", "\n"))
+        content = re.sub(r"\n{3,}", "\n\n", content).strip()
+        chapter_title = reader_data.get("chapterTitle")
+        story_title = reader_data.get("storyTitle")
+    else:
+        parser = ChapterPageParser()
+        parser.feed(decoded_html)
+        content = "\n\n".join(parser.paragraphs)
+        title_match = re.search(r"[-|–—]\s*(Chương\s+\d+.*)$", parser.page_title, re.IGNORECASE)
+        chapter_title = title_match.group(1).strip() if title_match else f"Chương {chapter_number}"
+        story_title = parser.heading
+
+    if not isinstance(chapter_title, str) or not chapter_title.strip():
+        chapter_title = f"Chương {chapter_number}"
+    if not isinstance(story_title, str):
+        story_title = ""
+    if not isinstance(content, str) or len(content) < 100:
         raise RuntimeError("Không tìm thấy nội dung chương. Trang có thể đã đổi cấu trúc hoặc yêu cầu đăng nhập.")
 
-    title_match = re.search(r"[-|–—]\s*(Chương\s+\d+.*)$", parser.page_title, re.IGNORECASE)
-    chapter_title = title_match.group(1).strip() if title_match else f"Chương {chapter_number}"
     return {
         "chapterNumber": chapter_number,
         "title": chapter_title,
-        "storyTitle": parser.heading,
+        "storyTitle": story_title,
         "content": content,
         "sourceUrl": url,
     }
@@ -165,6 +240,10 @@ def get_connection():
 
 
 def auto_generate_missing_audio():
+    print(
+        f"[auto audio] Background queue started; checking every {AUTO_AUDIO_INTERVAL_SECONDS}s.",
+        flush=True,
+    )
     while True:
         try:
             with CHUNK_JOBS_LOCK:
@@ -175,32 +254,41 @@ def auto_generate_missing_audio():
                 continue
 
             connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute(
-                "SELECT c.id FROM chapters c "
-                "LEFT JOIN chapter_audios ca ON ca.chapter_id = c.id "
-                "AND ca.voice = %s AND ca.content_hash = SHA2(c.content, 256) "
-                "AND ca.status = 'ready' "
-                "WHERE ca.id IS NULL "
-                "AND NOT EXISTS ("
-                "SELECT 1 FROM chapter_audios failed_ca "
-                "WHERE failed_ca.chapter_id = c.id AND failed_ca.voice = %s "
-                "AND failed_ca.content_hash = SHA2(c.content, 256) "
-                "AND failed_ca.status = 'error') "
-                "ORDER BY c.created_at, c.chapter_number LIMIT 1",
-                (f"edge:{VOICE}", f"edge:{VOICE}"),
-            )
-            chapter = cursor.fetchone()
-            cursor.close()
-            connection.close()
+            cursor = None
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT c.id FROM chapters c "
+                    "LEFT JOIN chapter_audios ca ON ca.chapter_id = c.id "
+                    "AND ca.voice = %s AND ca.content_hash = SHA2(c.content, 256) "
+                    "AND ca.status = 'ready' "
+                    "WHERE ca.id IS NULL "
+                    "AND NOT EXISTS ("
+                    "SELECT 1 FROM chapter_audios failed_ca "
+                    "WHERE failed_ca.chapter_id = c.id AND failed_ca.voice = %s "
+                    "AND failed_ca.content_hash = SHA2(c.content, 256) "
+                    "AND failed_ca.status = 'error' "
+                    f"AND failed_ca.updated_at >= NOW() - INTERVAL {AUTO_AUDIO_RETRY_MINUTES} MINUTE) "
+                    "ORDER BY c.created_at, c.chapter_number LIMIT 1",
+                    (f"edge:{VOICE}", f"edge:{VOICE}"),
+                )
+                chapter = cursor.fetchone()
+            finally:
+                if cursor:
+                    cursor.close()
+                connection.close()
 
             if chapter:
                 request = Request(
                     f"http://127.0.0.1:3001/api/chapters/{chapter[0]}/audio-jobs?voice=edge%3A{VOICE}",
                     method="POST",
                 )
-                with urlopen(request, timeout=10):
-                    pass
+                with urlopen(request, timeout=10) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                print(
+                    f"[auto audio] Chapter {chapter[0]} queued: {result.get('status', 'unknown')}.",
+                    flush=True,
+                )
         except Exception as error:
             print(f"Auto audio check failed: {error}")
         AUTO_AUDIO_WAKE.wait(AUTO_AUDIO_INTERVAL_SECONDS)
@@ -569,7 +657,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, chapter)
 
     @staticmethod
-    def split_content(content, max_size=12000):
+    def split_content(content, max_size=4000):
         paragraphs = [part.strip() for part in re.split(r"\n\s*\n", content) if part.strip()]
         if not paragraphs:
             return [content]
@@ -731,14 +819,20 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         )
                         return index, audio
                     except Exception as error:
-                        last_error = error
+                        last_error = (
+                            RuntimeError(
+                                f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
+                            )
+                            if isinstance(error, asyncio.TimeoutError)
+                            else error
+                        )
                         print(
                             f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                            f"(lần {attempt + 1}/3): {error}",
+                            f"(lần {attempt + 1}/3): {last_error}",
                             flush=True,
                         )
                         if attempt < 2:
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(2 ** (attempt + 1))
                 assert last_error is not None
                 raise last_error
 
@@ -962,7 +1056,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
         edge_voice_name = EDGE_VOICES.get(voice, VOICE if voice == VOICE else None)
         if not edge_voice_name:
             raise RuntimeError("Chỉ hỗ trợ giọng Hoài My và Nam Minh.")
-        communicator = edge_tts.Communicate(text, edge_voice_name)
+        communicator = edge_tts.Communicate(
+            text,
+            edge_voice_name,
+            receive_timeout=EDGE_TTS_RECEIVE_TIMEOUT_SECONDS,
+        )
         chunks = []
         async for chunk in communicator.stream():
             if chunk["type"] == "audio":
