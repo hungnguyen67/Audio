@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { Download } from 'lucide-react';
 import { Pagination } from '../shared/Pagination';
 import { Select } from '../shared/Select';
+import { requestJson } from '../shared/api';
 
 const voices = [['edge:vi-VN-HoaiMyNeural', 'Hoài My'], ['edge:vi-VN-NamMinhNeural', 'Nam Minh']];
 const speeds = [0.75, 1, 1.25, 1.5, 1.75, 2];
-const api = async (url, options) => {
-  const response = await fetch(url, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || 'Request failed.');
-  return data;
-};
 
 function HeadphonesIcon() {
   return (
@@ -49,6 +45,9 @@ export function Story() {
   const [speed, setSpeed] = useState(Number(localStorage.getItem('audio-playback-rate') || 1));
   const [autoNext, setAutoNext] = useState(localStorage.getItem('audio-auto-next') === 'true');
   const [volume, setVolume] = useState(Number(localStorage.getItem('audio-volume') ?? 1));
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState('');
+  const [downloadReady, setDownloadReady] = useState(null);
   const [chapterPage, setChapterPage] = useState(1);
   const [chapterPageSize, setChapterPageSize] = useState(5);
   const [status, setStatus] = useState('Vui lòng chọn một chương để bắt đầu nghe');
@@ -61,7 +60,7 @@ export function Story() {
     setLastListenedChapter(null);
     setChapterPage(1);
     if (!storyId) return;
-    api(`/api/story-progress/${storyId}`)
+    requestJson(`/api/story-progress/${storyId}`)
       .then((progress) => {
         if (progress.chapterNumber) {
           setLastListenedChapter(progress.chapterNumber);
@@ -88,10 +87,14 @@ export function Story() {
     if (Number.isFinite(savedVolume)) setVolume(savedVolume);
   }, []);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
+  useEffect(() => {
+    setDownloadReady(null);
+    setDownloadStatus('');
+  }, [selected?.id, voice]);
 
   const savePlaybackStateNow = (chapterId, chunkIndex = currentChunkRef.current, positionSeconds = 0) => {
     if (!chapterId) return;
-    return api(`/api/playback-state/${chapterId}`, {
+    return requestJson(`/api/playback-state/${chapterId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voice, playbackRate: speed, volume, chunkIndex, positionSeconds }),
@@ -108,7 +111,7 @@ export function Story() {
 
   const savePlaybackSettings = (chapterId, settings) => {
     if (!chapterId) return;
-    api(`/api/playback-state/${chapterId}`, {
+    requestJson(`/api/playback-state/${chapterId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -124,7 +127,7 @@ export function Story() {
   const saveStoryProgress = (chapter) => {
     if (!storyId || !chapter) return;
     setLastListenedChapter(chapter.number);
-    api(`/api/story-progress/${storyId}`, {
+    requestJson(`/api/story-progress/${storyId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chapterId: chapter.id, chapterNumber: chapter.number }),
@@ -159,7 +162,7 @@ export function Story() {
 
   const watchJobProgress = async (jobId) => {
     while (true) {
-      const job = await api(`/api/audio-jobs/${jobId}`);
+      const job = await requestJson(`/api/audio-jobs/${jobId}`);
       if (progressJobRef.current !== jobId) return;
       if (job.status === 'failed' || job.status === 'completed') return;
       if (job.totalChunks) {
@@ -180,7 +183,7 @@ export function Story() {
     watchJobProgress(jobId).catch(() => {});
     while (true) {
       if (requestId !== playbackRequestRef.current) return;
-      const job = await api(`/api/audio-jobs/${jobId}`);
+      const job = await requestJson(`/api/audio-jobs/${jobId}`);
       if (requestId !== playbackRequestRef.current) return;
       if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
       (job.completedChunks || []).forEach((chunk) => { chunks[chunk.index] = chunk.url; });
@@ -226,14 +229,14 @@ export function Story() {
     if (!shouldPlay) return;
     setStatus('Đang kiểm tra audio...');
     try {
-      const saved = await api(`/api/playback-state/${chapter.id}`);
+      const saved = await requestJson(`/api/playback-state/${chapter.id}`);
       if (requestId !== playbackRequestRef.current) return;
       setVoice(saved.voice);
       setSpeed(saved.playbackRate);
       setVolume(saved.volume);
       resumeRef.current = { chunkIndex: saved.chunkIndex || 0, positionSeconds: saved.positionSeconds || 0 };
       currentChunkRef.current = resumeRef.current.chunkIndex;
-      const result = await api(`/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(saved.voice)}`, { method: 'POST' });
+      const result = await requestJson(`/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(saved.voice)}`, { method: 'POST' });
       if (requestId !== playbackRequestRef.current) return;
       if (result.status === 'ready') {
         currentChunkRef.current = 0;
@@ -242,6 +245,61 @@ export function Story() {
       } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
     } catch (error) {
       if (requestId === playbackRequestRef.current) setStatus(error.message);
+    }
+  };
+
+  const downloadAudio = async () => {
+    if (!selected || isDownloading) return;
+    if (downloadReady?.chapterId === selected.id && downloadReady.voice === voice) {
+      const link = document.createElement('a');
+      link.href = `${downloadReady.url}${downloadReady.url.includes('?') ? '&' : '?'}download=1`;
+      link.download = `chapter-${selected.number}.mp3`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      return;
+    }
+
+    const chapter = selected;
+    const requestedVoice = voice;
+    setIsDownloading(true);
+    setDownloadStatus('Đang kiểm tra audio...');
+
+    try {
+      const result = await requestJson(
+        `/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(requestedVoice)}`,
+        { method: 'POST' },
+      );
+      let downloadUrl = result.url;
+
+      if (result.status !== 'ready') {
+        if (!result.jobId) throw new Error('Không nhận được mã tác vụ tạo audio.');
+        while (true) {
+          const job = await requestJson(`/api/audio-jobs/${result.jobId}`);
+          if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
+          if (job.status === 'completed') {
+            if (!job.finalUrl) throw new Error('Tạo xong nhưng không tìm thấy file audio.');
+            downloadUrl = job.finalUrl;
+            break;
+          }
+
+          const completed = job.completedCount ?? 0;
+          const total = job.totalChunks ?? 0;
+          setDownloadStatus(
+            total
+              ? `Đang tạo audio để tải: ${completed}/${total} đoạn`
+              : 'Đang tạo audio để tải...',
+          );
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        }
+      }
+
+      setDownloadReady({ chapterId: chapter.id, voice: requestedVoice, url: downloadUrl });
+      setDownloadStatus('Audio đã sẵn sàng. Nhấn "Tải MP3" để lưu file.');
+    } catch (error) {
+      setDownloadStatus(error.message);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -405,6 +463,21 @@ export function Story() {
                   onVolumeChange={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
                   onInput={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
                 />
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ width: '100%', marginTop: 12 }}
+                  disabled={!selected || isDownloading}
+                  onClick={downloadAudio}
+                >
+                  <Download size={15} />
+                  {isDownloading
+                    ? 'Đang chờ audio...'
+                    : downloadReady?.chapterId === selected?.id && downloadReady?.voice === voice
+                      ? 'Tải MP3'
+                      : 'Chuẩn bị tải audio'}
+                </button>
+                {downloadStatus && <div className="player-status" role="status" style={{ margin: '8px 0 0' }}>{downloadStatus}</div>}
                 <label className="volume-control">
                   <span>Âm lượng</span>
                   <input

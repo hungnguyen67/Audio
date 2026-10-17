@@ -1074,6 +1074,21 @@ audio {
   font-weight: 700;
 }
 
+.admin-import-controls {
+  display: grid;
+  grid-template-columns: minmax(170px, 2fr) minmax(70px, 0.7fr) minmax(70px, 0.7fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.admin-import-url {
+  min-width: 0;
+}
+
+.admin-import-controls > .form-group {
+  margin-bottom: 0;
+}
+
 @media (max-width: 720px) {
   .form-modal-backdrop .form-panel {
     overflow-y: auto;
@@ -1092,5 +1107,14 @@ audio {
 
   .ch-sub-items {
     max-height: 240px;
+  }
+
+  .admin-import-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .admin-import-url,
+  .admin-import-controls > .btn {
+    grid-column: 1 / -1;
   }
 }

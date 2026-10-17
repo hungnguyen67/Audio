@@ -1,24 +1,18 @@
 import { configureStore, createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+import { requestJson } from './shared/api';
 
-const request = async (url, options) => {
-  const response = await fetch(url, options);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || 'Request failed.');
-  return result;
-};
-
-export const fetchStories = createAsyncThunk('stories/fetch', () => request('/api/stories'));
-export const createStory = createAsyncThunk('stories/create', (title) => request('/api/stories', {
+export const fetchStories = createAsyncThunk('stories/fetch', () => requestJson('/api/stories'));
+export const createStory = createAsyncThunk('stories/create', (title) => requestJson('/api/stories', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
 }));
-export const saveChapter = createAsyncThunk('stories/saveChapter', ({ storyId, chapterNumber, title, content }) => request('/api/chapters', {
+export const saveChapter = createAsyncThunk('stories/saveChapter', ({ storyId, chapterNumber, title, content }) => requestJson('/api/chapters', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storyId, chapterNumber, title, content }),
 }));
-export const updateChapter = createAsyncThunk('stories/updateChapter', ({ id, chapterNumber, title, content }) => request(`/api/chapters/${id}`, {
+export const updateChapter = createAsyncThunk('stories/updateChapter', ({ id, chapterNumber, title, content }) => requestJson(`/api/chapters/${id}`, {
   method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chapterNumber, title, content }),
 }));
-export const deleteChapter = createAsyncThunk('stories/deleteChapter', (id) => request(`/api/chapters/${id}`, { method: 'DELETE' }));
-export const deleteStory = createAsyncThunk('stories/deleteStory', (id) => request(`/api/stories/${id}`, { method: 'DELETE' }));
+export const deleteChapter = createAsyncThunk('stories/deleteChapter', (id) => requestJson(`/api/chapters/${id}`, { method: 'DELETE' }));
+export const deleteStory = createAsyncThunk('stories/deleteStory', (id) => requestJson(`/api/stories/${id}`, { method: 'DELETE' }));
 
 const storiesSlice = createSlice({
   name: 'stories',

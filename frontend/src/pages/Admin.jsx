@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter } from '../store';
 import { Pagination } from '../shared/Pagination';
 import { toast } from '../shared/Toast';
+import { requestJson } from '../shared/api';
 
 function HeadphonesIcon() {
   return (
@@ -38,6 +39,14 @@ export function Admin() {
   const [formOpen, setFormOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [form, setForm] = useState({ story: '', number: '', title: '', content: '' });
+  const [importUrl, setImportUrl] = useState(() => localStorage.getItem('audio-story:lastChapterImportUrl') || '');
+  const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState('');
+  const [importFromChapter, setImportFromChapter] = useState('1');
+  const [importToChapter, setImportToChapter] = useState('1');
+  const [importedChapters, setImportedChapters] = useState([]);
+  const [mergedSourceCount, setMergedSourceCount] = useState(0);
+  const [savingImportedChapters, setSavingImportedChapters] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -53,11 +62,14 @@ export function Admin() {
     setEditing(chapter);
     setForm({ story: story?.title || '', number: chapter?.number || '', title: chapter?.title || '', content: '' });
     setStatus('');
+    setImportStatus('');
+    setImportFromChapter('1');
+    setImportToChapter('1');
+    setImportedChapters([]);
+    setMergedSourceCount(0);
     if (chapter) {
       try {
-        const res = await fetch(`/api/chapters/${chapter.id}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Tải chương thất bại.');
+        const data = await requestJson(`/api/chapters/${chapter.id}`);
         setForm({ story: story.title, number: chapter.number, title: data.title, content: data.content });
       } catch (err) { setStatus(err.message); }
     }
@@ -69,6 +81,11 @@ export function Admin() {
     setEditing(null);
     setForm({ story: '', number: '', title: '', content: '' });
     setStatus('');
+    setImportStatus('');
+    setImportFromChapter('1');
+    setImportToChapter('1');
+    setImportedChapters([]);
+    setMergedSourceCount(0);
   };
 
   const closeForm = () => {
@@ -77,6 +94,11 @@ export function Admin() {
     setEditing(null);
     setForm({ story: '', number: '', title: '', content: '' });
     setStatus('');
+    setImportStatus('');
+    setImportFromChapter('1');
+    setImportToChapter('1');
+    setImportedChapters([]);
+    setMergedSourceCount(0);
   };
 
   const cancelEdit = () => {
@@ -85,7 +107,165 @@ export function Admin() {
     setStatus('');
   };
 
+  const importChapter = async () => {
+    if (!importUrl.trim()) {
+      setImportStatus('Hãy nhập link chương.');
+      return;
+    }
+
+    const fromChapter = Number(importFromChapter);
+    const toChapter = Number(importToChapter);
+    if (!Number.isInteger(fromChapter) || !Number.isInteger(toChapter) || fromChapter < 1 || toChapter < fromChapter) {
+      setImportStatus('Khoảng chương không hợp lệ. Hãy nhập số chương bắt đầu và kết thúc hợp lệ.');
+      return;
+    }
+
+    let chapterUrl;
+    try {
+      chapterUrl = new URL(importUrl.trim());
+    } catch {
+      setImportStatus('Link chương không hợp lệ.');
+      return;
+    }
+    if (chapterUrl.protocol !== 'https:' || chapterUrl.hostname !== 'metruyenchu.co' || !/\/chuong-\d+\/?$/i.test(chapterUrl.pathname)) {
+      setImportStatus('Hãy dùng link HTTPS metruyenchu.co có dạng .../chuong-1.');
+      return;
+    }
+    localStorage.setItem('audio-story:lastChapterImportUrl', importUrl.trim());
+    const chapterPath = chapterUrl.pathname.replace(/\/chuong-\d+\/?$/i, '');
+    const importingRange = fromChapter !== toChapter;
+    if ((form.content.trim() || importedChapters.length) && !window.confirm('Lấy chương mới sẽ thay thế nội dung hoặc danh sách chương đang chờ. Tiếp tục?')) return;
+
+    setImportedChapters([]);
+    setMergedSourceCount(0);
+    setImporting(true);
+    const chapters = [];
+    try {
+      for (let chapterNumber = fromChapter; chapterNumber <= toChapter; chapterNumber += 1) {
+        setImportStatus(`Đang lấy chương ${chapterNumber}/${toChapter}...`);
+        chapterUrl.pathname = `${chapterPath}/chuong-${chapterNumber}`;
+        const chapter = await requestJson('/api/import-chapter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: chapterUrl.toString() }),
+        });
+        chapters.push(chapter);
+      }
+
+      if (importingRange) {
+        const mergedChapter = {
+          ...chapters[0],
+          chapterNumber: fromChapter,
+          title: chapters[0].title || `Chương ${fromChapter}`,
+          content: chapters.map((chapter) => chapter.content).join('\n\n'),
+        };
+        setImportedChapters([mergedChapter]);
+        setMergedSourceCount(chapters.length);
+        setForm((previous) => ({
+          ...previous,
+          story: !storyId && !previous.story.trim() ? chapters[0].storyTitle || previous.story : previous.story,
+          number: String(fromChapter),
+          title: mergedChapter.title,
+          content: mergedChapter.content,
+        }));
+        setImportStatus(`Đã gộp ${chapters.length} chương thành 1 tập (số ${fromChapter}).`);
+      } else {
+        const chapter = chapters[0];
+        setForm((previous) => ({
+          ...previous,
+          story: !storyId && !previous.story.trim() ? chapter.storyTitle || previous.story : previous.story,
+          number: String(chapter.chapterNumber),
+          title: chapter.title,
+          content: chapter.content,
+        }));
+        setImportStatus(`Đã lấy ${chapter.content.length.toLocaleString('vi-VN')} ký tự. Hãy kiểm tra rồi bấm Lưu.`);
+      }
+    } catch (err) {
+      if (chapters.length) {
+        const mergedChapter = {
+          ...chapters[0],
+          chapterNumber: fromChapter,
+          title: chapters[0].title || `Chương ${fromChapter}`,
+          content: chapters.map((chapter) => chapter.content).join('\n\n'),
+        };
+        setImportedChapters([mergedChapter]);
+        setMergedSourceCount(chapters.length);
+        if (!storyId && !form.story.trim()) {
+          setForm((previous) => ({ ...previous, story: chapters[0].storyTitle || previous.story }));
+        }
+        setForm((previous) => ({
+          ...previous,
+          number: String(fromChapter),
+          title: mergedChapter.title,
+          content: mergedChapter.content,
+        }));
+        setImportStatus(`Đã gộp ${chapters.length} chương thành 1 tập; dừng tại chương ${fromChapter + chapters.length}: ${err.message}`);
+      } else {
+        setImportStatus(err.message);
+      }
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const saveImportedChapters = async () => {
+    if (!form.story.trim()) {
+      setStatus('Vui lòng điền tên truyện trước khi lưu chương.');
+      return;
+    }
+    if (mergedSourceCount && (!Number.isInteger(Number(form.number)) || Number(form.number) < 1 || !form.title.trim() || !form.content.trim())) {
+      setStatus('Hãy kiểm tra số chương, tiêu đề và nội dung của tập đã gộp trước khi lưu.');
+      return;
+    }
+
+    setSavingImportedChapters(true);
+    setStatus('Đang chuẩn bị lưu chương...');
+    let id = storyId;
+    let savedCount = 0;
+    let pendingChapters = importedChapters;
+    const totalCount = importedChapters.length;
+    try {
+      if (!id) {
+        id = (await dispatch(createStory(form.story.trim())).unwrap()).id;
+        setStoryId(id);
+      }
+
+      while (pendingChapters.length) {
+        const chapter = pendingChapters[0];
+        const chapterNumber = mergedSourceCount ? Number(form.number) : chapter.chapterNumber;
+        setStatus(`Đang lưu ${mergedSourceCount ? 'tập' : 'chương'} ${chapterNumber} (${savedCount + 1}/${totalCount})...`);
+        await dispatch(saveChapter({
+          storyId: id,
+          chapterNumber,
+          title: mergedSourceCount ? form.title.trim() : chapter.title || `Chương ${chapterNumber}`,
+          content: mergedSourceCount ? form.content.trim() : chapter.content,
+        })).unwrap();
+        savedCount += 1;
+        pendingChapters = pendingChapters.slice(1);
+        setImportedChapters(pendingChapters);
+      }
+
+      await dispatch(fetchStories());
+      setEditing(null);
+      setForm((previous) => ({ ...previous, number: '', title: '', content: '' }));
+      setStatus(`Đã lưu ${savedCount} tập thành công${mergedSourceCount ? ` (gộp từ ${mergedSourceCount} chương nguồn)` : ''}.`);
+      toast.success('Đã lưu thành công', mergedSourceCount
+        ? `1 tập gộp từ ${mergedSourceCount} chương nguồn đã được thêm vào truyện.`
+        : `${savedCount} chương đã được thêm vào truyện.`);
+      setMergedSourceCount(0);
+    } catch (err) {
+      setStatus(`Đã lưu ${savedCount} ${mergedSourceCount ? 'tập' : 'chương'}; còn ${pendingChapters.length} mục chưa lưu. ${err.message}`);
+      toast.error('Không thể lưu hết chương', err.message);
+    } finally {
+      setSavingImportedChapters(false);
+    }
+  };
+
   const submit = async () => {
+    if (importedChapters.length) {
+      await saveImportedChapters();
+      return;
+    }
     if (!form.story.trim() || !form.content.trim()) { setStatus('Vui lòng điền tên truyện và nội dung chương.'); return; }
     setStatus('Đang lưu...');
     try {
@@ -226,7 +406,7 @@ export function Admin() {
               role="presentation"
               onMouseDown={(event) => {
                 if (event.target === event.currentTarget) {
-                  closeForm();
+                  if (!importing && !savingImportedChapters) closeForm();
                 }
               }}
             >
@@ -237,6 +417,55 @@ export function Admin() {
 
                 <div className={`form-modal-grid${selected ? '' : ' form-modal-grid-single'}`}>
                   <div className="form-modal-fields">
+                    {!editing && (
+                      <div className="form-group">
+                        <div className="admin-import-controls">
+                          <div className="admin-import-url">
+                            <label className="form-label" htmlFor="chapter-source-url">Lấy chương từ link</label>
+                            <input
+                              id="chapter-source-url"
+                              className="form-input"
+                              type="url"
+                              value={importUrl}
+                              onChange={(event) => {
+                                setImportUrl(event.target.value);
+                                localStorage.setItem('audio-story:lastChapterImportUrl', event.target.value);
+                              }}
+                              placeholder="https://metruyenchu.co/truyen/.../chuong-1"
+                              disabled={importing || savingImportedChapters}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label" htmlFor="chapter-range-start">Từ chương</label>
+                            <input
+                              id="chapter-range-start"
+                              className="form-input"
+                              type="number"
+                              min="1"
+                              value={importFromChapter}
+                              onChange={(event) => setImportFromChapter(event.target.value)}
+                              disabled={importing || savingImportedChapters}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label" htmlFor="chapter-range-end">Đến chương</label>
+                            <input
+                              id="chapter-range-end"
+                              className="form-input"
+                              type="number"
+                              min={importFromChapter}
+                              value={importToChapter}
+                              onChange={(event) => setImportToChapter(event.target.value)}
+                              disabled={importing || savingImportedChapters}
+                            />
+                          </div>
+                          <button className="btn btn-outline" onClick={importChapter} disabled={importing || savingImportedChapters}>
+                            {importing ? 'Đang lấy...' : 'Lấy chương'}
+                          </button>
+                        </div>
+                        {importStatus && <div className="form-msg" aria-live="polite">{importStatus}</div>}
+                      </div>
+                    )}
                     <div className="form-group">
                   <label className="form-label">Tên truyện</label>
                   <input
@@ -280,8 +509,16 @@ export function Admin() {
                     </div>
 
                     <div className="form-footer">
-                  <button className="btn btn-dark" onClick={submit}>Lưu</button>
-                    <button className="btn btn-outline" onClick={editing ? cancelEdit : closeForm}>{editing ? 'Hủy' : 'Đóng'}</button>
+                  <button className="btn btn-dark" onClick={submit} disabled={importing || savingImportedChapters}>
+                    {savingImportedChapters
+                      ? 'Đang lưu...'
+                      : mergedSourceCount
+                        ? 'Lưu 1 tập đã gộp'
+                        : importedChapters.length
+                          ? `Lưu ${importedChapters.length} chương`
+                          : 'Lưu'}
+                  </button>
+                    <button className="btn btn-outline" onClick={editing ? cancelEdit : closeForm} disabled={importing || savingImportedChapters}>{editing ? 'Hủy' : 'Đóng'}</button>
                   <span className="form-msg">{status}</span>
                     </div>
                 </div>

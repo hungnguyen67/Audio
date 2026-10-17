@@ -1,18 +1,24 @@
 import asyncio
 import hashlib
+from html.parser import HTMLParser
 import json
 import re
 import sys
 import threading
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 import uuid
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import edge_tts
 import mysql.connector
+
+for output_stream in (sys.stdout, sys.stderr):
+    if hasattr(output_stream, "reconfigure"):
+        output_stream.reconfigure(errors="backslashreplace")
 
 ROOT = Path(__file__).parent.parent.resolve()
 FRONTEND_ROOT = ROOT / "frontend-dist" if (ROOT / "frontend-dist").exists() else ROOT / "frontend"
@@ -32,7 +38,126 @@ DB_CONFIG = {
 CHUNK_JOBS = {}
 CHUNK_JOBS_LOCK = threading.Lock()
 AUDIO_JOBS_BY_KEY = {}
+AUDIO_JOB_START_LOCK = threading.Lock()
+EDGE_TTS_JOB_LOCK = threading.Lock()
 AUTO_AUDIO_INTERVAL_SECONDS = 60
+AUTO_AUDIO_WAKE = threading.Event()
+EDGE_TTS_CHUNK_CONCURRENCY = 2
+CHAPTER_URL_PATTERN = re.compile(r"^/truyen/[^/]+/chuong-(\d+)/?$", re.IGNORECASE)
+MAX_CHAPTER_PAGE_BYTES = 5 * 1024 * 1024
+CHAPTER_PAGE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+class ChapterPageParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.article_depth = 0
+        self.active_capture = None
+        self.capture_parts = []
+        self.page_title = ""
+        self.heading = ""
+        self.paragraphs = []
+
+    def handle_starttag(self, tag, _attrs):
+        if tag == "article":
+            self.article_depth += 1
+        if tag == "title" or tag == "h1" or (tag == "p" and self.article_depth):
+            self.active_capture = tag
+            self.capture_parts = []
+        elif tag == "br" and self.active_capture == "p":
+            self.capture_parts.append("\n")
+
+    def handle_data(self, data):
+        if self.active_capture:
+            self.capture_parts.append(data)
+
+    def handle_endtag(self, tag):
+        if self.active_capture == tag:
+            text = re.sub(r"\s+", " ", "".join(self.capture_parts)).strip()
+            if tag == "title":
+                self.page_title = text
+            elif tag == "h1":
+                self.heading = text
+            elif tag == "p" and text:
+                self.paragraphs.append(text)
+            self.active_capture = None
+            self.capture_parts = []
+        if tag == "article" and self.article_depth:
+            self.article_depth -= 1
+
+
+class SameHostRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        redirected_url = urlsplit(new_url)
+        if (
+            redirected_url.scheme != "https"
+            or redirected_url.hostname != "metruyenchu.co"
+            or redirected_url.port not in (None, 443)
+            or redirected_url.username
+            or redirected_url.password
+        ):
+            raise ValueError("Trang chương chuyển hướng ra ngoài metruyenchu.co; đã hủy để bảo vệ kết nối.")
+        return super().redirect_request(request, response, code, message, headers, new_url)
+
+
+def fetch_chapter_from_url(url):
+    parsed_url = urlsplit(url)
+    chapter_match = CHAPTER_URL_PATTERN.fullmatch(parsed_url.path)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.hostname != "metruyenchu.co"
+        or parsed_url.port not in (None, 443)
+        or parsed_url.username
+        or parsed_url.password
+        or not chapter_match
+    ):
+        raise ValueError("Link không hợp lệ. Hãy dùng link chương dạng https://metruyenchu.co/truyen/ten-truyen/chuong-1")
+
+    chapter_number = int(chapter_match.group(1))
+    if chapter_number < 1:
+        raise ValueError("Số chương trong link phải lớn hơn 0.")
+
+    request = Request(
+        url,
+        headers={
+            "User-Agent": CHAPTER_PAGE_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "vi,en-US;q=0.8,en;q=0.6",
+        },
+    )
+    try:
+        with build_opener(SameHostRedirectHandler()).open(request, timeout=20) as response:
+            if response.status != HTTPStatus.OK:
+                raise RuntimeError(f"Trang nguồn trả về HTTP {response.status}.")
+            if response.headers.get_content_type() != "text/html":
+                raise RuntimeError("Link không trả về trang HTML.")
+            html = response.read(MAX_CHAPTER_PAGE_BYTES + 1)
+            if len(html) > MAX_CHAPTER_PAGE_BYTES:
+                raise RuntimeError("Trang chương quá lớn, không thể nhập an toàn.")
+            encoding = response.headers.get_content_charset() or "utf-8"
+    except HTTPError as error:
+        raise RuntimeError(f"Không tải được trang nguồn: HTTP {error.code}.") from error
+    except URLError as error:
+        raise RuntimeError(f"Không kết nối được trang nguồn: {error.reason}.") from error
+
+    parser = ChapterPageParser()
+    parser.feed(html.decode(encoding, errors="replace"))
+    content = "\n\n".join(parser.paragraphs)
+    if not parser.paragraphs or len(content) < 100:
+        raise RuntimeError("Không tìm thấy nội dung chương. Trang có thể đã đổi cấu trúc hoặc yêu cầu đăng nhập.")
+
+    title_match = re.search(r"[-|–—]\s*(Chương\s+\d+.*)$", parser.page_title, re.IGNORECASE)
+    chapter_title = title_match.group(1).strip() if title_match else f"Chương {chapter_number}"
+    return {
+        "chapterNumber": chapter_number,
+        "title": chapter_title,
+        "storyTitle": parser.heading,
+        "content": content,
+        "sourceUrl": url,
+    }
 
 
 def get_connection():
@@ -42,6 +167,13 @@ def get_connection():
 def auto_generate_missing_audio():
     while True:
         try:
+            with CHUNK_JOBS_LOCK:
+                has_active_jobs = bool(AUDIO_JOBS_BY_KEY)
+            if has_active_jobs:
+                AUTO_AUDIO_WAKE.wait(AUTO_AUDIO_INTERVAL_SECONDS)
+                AUTO_AUDIO_WAKE.clear()
+                continue
+
             connection = get_connection()
             cursor = connection.cursor()
             cursor.execute(
@@ -49,23 +181,30 @@ def auto_generate_missing_audio():
                 "LEFT JOIN chapter_audios ca ON ca.chapter_id = c.id "
                 "AND ca.voice = %s AND ca.content_hash = SHA2(c.content, 256) "
                 "AND ca.status = 'ready' "
-                "WHERE ca.id IS NULL",
-                (f"edge:{VOICE}",),
+                "WHERE ca.id IS NULL "
+                "AND NOT EXISTS ("
+                "SELECT 1 FROM chapter_audios failed_ca "
+                "WHERE failed_ca.chapter_id = c.id AND failed_ca.voice = %s "
+                "AND failed_ca.content_hash = SHA2(c.content, 256) "
+                "AND failed_ca.status = 'error') "
+                "ORDER BY c.created_at, c.chapter_number LIMIT 1",
+                (f"edge:{VOICE}", f"edge:{VOICE}"),
             )
-            chapter_ids = [row[0] for row in cursor.fetchall()]
+            chapter = cursor.fetchone()
             cursor.close()
             connection.close()
 
-            for chapter_id in chapter_ids:
+            if chapter:
                 request = Request(
-                    f"http://127.0.0.1:3001/api/chapters/{chapter_id}/audio-jobs?voice=edge%3A{VOICE}",
+                    f"http://127.0.0.1:3001/api/chapters/{chapter[0]}/audio-jobs?voice=edge%3A{VOICE}",
                     method="POST",
                 )
                 with urlopen(request, timeout=10):
                     pass
         except Exception as error:
             print(f"Auto audio check failed: {error}")
-        threading.Event().wait(AUTO_AUDIO_INTERVAL_SECONDS)
+        AUTO_AUDIO_WAKE.wait(AUTO_AUDIO_INTERVAL_SECONDS)
+        AUTO_AUDIO_WAKE.clear()
 
 
 class AudioHandler(SimpleHTTPRequestHandler):
@@ -127,6 +266,10 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path == "/api/import-chapter":
+            self.import_chapter()
+            return
+
         if path == "/api/stories":
             self.create_story()
             return
@@ -141,6 +284,25 @@ class AudioHandler(SimpleHTTPRequestHandler):
             return
 
         self.send_error(HTTPStatus.NOT_FOUND)
+
+    def import_chapter(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 4096:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Link chương không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Dữ liệu yêu cầu không hợp lệ.")
+            url = str(payload.get("url", "")).strip()
+            chapter = fetch_chapter_from_url(url)
+            self.send_json(HTTPStatus.OK, chapter)
+        except (ValueError, TypeError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": str(error)})
+        except UnicodeDecodeError:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Dữ liệu link phải ở định dạng UTF-8."})
+        except RuntimeError as error:
+            self.send_json(HTTPStatus.BAD_GATEWAY, {"message": str(error)})
 
     def do_PUT(self):
         playback_match = re.fullmatch(r"/api/playback-state/([a-f0-9]+)", urlsplit(self.path).path)
@@ -356,6 +518,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cursor.close()
             connection.close()
             self.send_json(HTTPStatus.OK, {"id": chapter_id, "storyId": story_id, "number": chapter_number, "title": title})
+            AUTO_AUDIO_WAKE.set()
         except mysql.connector.Error as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
         except Exception as error:
@@ -387,6 +550,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cursor.close()
             connection.close()
             self.send_json(HTTPStatus.OK, {"id": chapter_id, "message": "Đã cập nhật tập. Audio sẽ tạo lại theo nội dung mới."})
+            AUTO_AUDIO_WAKE.set()
         except UnicodeDecodeError:
             self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Dữ liệu gửi lên phải ở định dạng UTF-8."})
         except mysql.connector.Error as error:
@@ -443,6 +607,12 @@ class AudioHandler(SimpleHTTPRequestHandler):
         return chunks or [content]
 
     def start_audio_job(self, chapter_id, query):
+        with AUDIO_JOB_START_LOCK:
+            self._start_audio_job_locked(chapter_id, query)
+
+    def _start_audio_job_locked(self, chapter_id, query):
+        connection = None
+        cursor = None
         try:
             voice = self.normalize_voice(query.get("voice", [None])[0])
             connection = get_connection()
@@ -450,8 +620,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cursor.execute("SELECT id, title, content FROM chapters WHERE id = %s", (chapter_id,))
             chapter = cursor.fetchone()
             if not chapter:
-                cursor.close()
-                connection.close()
                 self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy tập."})
                 return
             content_hash = hashlib.sha256(chapter["content"].encode("utf-8")).hexdigest()
@@ -461,8 +629,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             )
             cache = cursor.fetchone()
             if cache and cache["status"] == "ready" and cache["audio_id"]:
-                cursor.close()
-                connection.close()
                 self.send_json(HTTPStatus.OK, {"status": "ready", "url": f"/api/audio/{cache['audio_id']}", "cached": True})
                 return
 
@@ -470,8 +636,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             with CHUNK_JOBS_LOCK:
                 existing_job = AUDIO_JOBS_BY_KEY.get(job_key)
             if existing_job:
-                cursor.close()
-                connection.close()
                 self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": existing_job})
                 return
 
@@ -487,7 +651,9 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 cursor.execute("DELETE FROM audio_chunks WHERE chapter_audio_id = %s", (cache_id,))
             connection.commit()
             cursor.close()
+            cursor = None
             connection.close()
+            connection = None
 
             with CHUNK_JOBS_LOCK:
                 job_id = uuid.uuid4().hex
@@ -496,20 +662,35 @@ class AudioHandler(SimpleHTTPRequestHandler):
             threading.Thread(target=self.run_chunk_job, args=(job_id, job_key, cache_id, chapter_id, voice, chapter["content"]), daemon=True).start()
             self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": job_id})
         except Exception as error:
+            if connection and connection.is_connected():
+                connection.rollback()
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Không khởi động được audio: {error}"})
+        finally:
+            if cursor:
+                cursor.close()
+            if connection and connection.is_connected():
+                connection.close()
 
     def store_chunk(self, job_id, cache_id, index, audio):
         chunk_id = uuid.uuid4().hex
         connection = get_connection()
-        cursor = connection.cursor()
-        cursor.execute(
-            "INSERT INTO audio_chunks (id, chapter_audio_id, chunk_index, audio_data) VALUES (%s, %s, %s, %s) "
-            "ON DUPLICATE KEY UPDATE audio_data = VALUES(audio_data)",
-            (chunk_id, cache_id, index, audio),
-        )
-        connection.commit()
-        cursor.close()
-        connection.close()
+        cursor = None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                "INSERT INTO audio_chunks (id, chapter_audio_id, chunk_index, audio_data) VALUES (%s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE audio_data = VALUES(audio_data)",
+                (chunk_id, cache_id, index, audio),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if connection.is_connected():
+                connection.close()
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["completedChunks"].append({"index": index, "url": f"/api/audio-chunks/{chunk_id}"})
 
@@ -519,12 +700,43 @@ class AudioHandler(SimpleHTTPRequestHandler):
         async def synth_one(index, text):
             async with semaphore:
                 last_error = None
+                received_audio_bytes = 0
+                next_progress_bytes = 1024 * 1024
+                print(
+                    f"[audio {job_id}] Đang tạo đoạn {index + 1}/{len(chunks)} "
+                    f"({len(text):,} ký tự)...",
+                    flush=True,
+                )
+
+                def report_audio_progress(byte_count):
+                    nonlocal received_audio_bytes, next_progress_bytes
+                    received_audio_bytes += byte_count
+                    if received_audio_bytes >= next_progress_bytes:
+                        print(
+                            f"[audio {job_id}] Đoạn {index + 1}/{len(chunks)} "
+                            f"đã nhận {received_audio_bytes / (1024 * 1024):.1f} MB audio...",
+                            flush=True,
+                        )
+                        next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
+
                 for attempt in range(3):
                     try:
-                        audio = await self.synthesize(text, voice)
+                        received_audio_bytes = 0
+                        next_progress_bytes = 1024 * 1024
+                        audio = await self.synthesize(text, voice, report_audio_progress)
+                        print(
+                            f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
+                            f"({len(audio):,} byte).",
+                            flush=True,
+                        )
                         return index, audio
                     except Exception as error:
                         last_error = error
+                        print(
+                            f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
+                            f"(lần {attempt + 1}/3): {error}",
+                            flush=True,
+                        )
                         if attempt < 2:
                             await asyncio.sleep(1)
                 assert last_error is not None
@@ -546,8 +758,22 @@ class AudioHandler(SimpleHTTPRequestHandler):
         chunks = self.split_content(content)
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["totalChunks"] = len(chunks)
+        print(
+            f"[audio {job_id}] Bắt đầu chương {chapter_id}: "
+            f"{len(content):,} ký tự, chia thành {len(chunks)} đoạn.",
+            flush=True,
+        )
         try:
-            results = asyncio.run(self.synthesize_chunks_parallel(chunks, voice, job_id, cache_id, max_concurrency=4))
+            with EDGE_TTS_JOB_LOCK:
+                results = asyncio.run(
+                    self.synthesize_chunks_parallel(
+                        chunks,
+                        voice,
+                        job_id,
+                        cache_id,
+                        max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
+                    )
+                )
             full_audio = b"".join(audio for _, audio in results)
 
             connection = get_connection()
@@ -565,7 +791,13 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
             with CHUNK_JOBS_LOCK:
                 CHUNK_JOBS[job_id].update({"status": "completed", "finalUrl": f"/api/audio/{audio_id}"})
+            print(
+                f"[audio {job_id}] HOÀN TẤT chương {chapter_id}: "
+                f"{len(chunks)} đoạn, {len(full_audio):,} byte audio.",
+                flush=True,
+            )
         except Exception as error:
+            print(f"[audio {job_id}] THẤT BẠI chương {chapter_id}: {error}", flush=True)
             connection = get_connection()
             cursor = connection.cursor()
             cursor.execute("UPDATE chapter_audios SET status = 'error', error_message = %s WHERE id = %s", (str(error)[:500], cache_id))
@@ -577,6 +809,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         finally:
             with CHUNK_JOBS_LOCK:
                 AUDIO_JOBS_BY_KEY.pop(job_key, None)
+            AUTO_AUDIO_WAKE.set()
 
     def stream_chunk(self, chunk_id):
         connection = get_connection()
@@ -659,12 +892,19 @@ class AudioHandler(SimpleHTTPRequestHandler):
             "database": status["database_name"],
             "audioCount": status["audio_count"],
             "storage": "MySQL audios.audio_data",
+            "edgeTtsVersion": edge_tts.__version__,
+            "pythonExecutable": sys.executable,
         }
 
     def stream_audio(self, audio_id):
         connection = get_connection()
         cursor = connection.cursor()
-        cursor.execute("SELECT audio_data FROM audios WHERE id = %s", (audio_id,))
+        cursor.execute(
+            "SELECT a.audio_data, c.chapter_number, c.title "
+            "FROM audios a LEFT JOIN chapters c ON c.id = a.chapter_id "
+            "WHERE a.id = %s",
+            (audio_id,),
+        )
         row = cursor.fetchone()
         cursor.close()
         connection.close()
@@ -673,6 +913,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             return
 
         audio = row[0]
+        download = parse_qs(urlsplit(self.path).query).get("download") == ["1"]
         start = 0
         end = len(audio) - 1
         range_header = self.headers.get("Range")
@@ -699,14 +940,25 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(partial_audio)))
         if range_header:
             self.send_header("Content-Range", f"bytes {start}-{end}/{len(audio)}")
-        self.send_header("Content-Disposition", 'inline; filename="story.mp3"')
+        if download:
+            chapter_number = row[1]
+            title = row[2] or f"chapter-{chapter_number or audio_id}"
+            filename_fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", title).strip("._") or "chapter"
+            filename_fallback = f"chapter-{chapter_number}-{filename_fallback[:60]}.mp3" if chapter_number else f"{audio_id}.mp3"
+            filename_encoded = quote(f"{title}.mp3", safe="")
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename=\"{filename_fallback}\"; filename*=UTF-8''{filename_encoded}",
+            )
+        else:
+            self.send_header("Content-Disposition", 'inline; filename="story.mp3"')
         try:
             self.end_headers()
             self.wfile.write(partial_audio)
         except ConnectionError:
             pass
 
-    async def synthesize(self, text, voice=f"edge:{VOICE}"):
+    async def synthesize(self, text, voice=f"edge:{VOICE}", progress_callback=None):
         edge_voice_name = EDGE_VOICES.get(voice, VOICE if voice == VOICE else None)
         if not edge_voice_name:
             raise RuntimeError("Chỉ hỗ trợ giọng Hoài My và Nam Minh.")
@@ -715,6 +967,8 @@ class AudioHandler(SimpleHTTPRequestHandler):
         async for chunk in communicator.stream():
             if chunk["type"] == "audio":
                 chunks.append(chunk["data"])
+                if progress_callback:
+                    progress_callback(len(chunk["data"]))
         return b"".join(chunks)
 
     def send_json(self, status, payload):
@@ -783,5 +1037,5 @@ if __name__ == "__main__":
     ensure_playback_tables()
     server = QuietThreadingHTTPServer(("127.0.0.1", 3001), AudioHandler)
     threading.Thread(target=auto_generate_missing_audio, daemon=True).start()
-    print("Audio Story Reader: http://127.0.0.1:3001")
+    print(f"Audio Story Reader: http://127.0.0.1:3001 (edge-tts {edge_tts.__version__})", flush=True)
     server.serve_forever()
