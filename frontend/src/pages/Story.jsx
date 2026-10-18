@@ -6,7 +6,7 @@ import { Select } from '../shared/Select';
 import { requestJson } from '../shared/api';
 
 const voices = [['edge:vi-VN-HoaiMyNeural', 'Hoài My'], ['edge:vi-VN-NamMinhNeural', 'Nam Minh']];
-const speeds = [0.75, 1, 1.25, 1.5, 1.75, 2];
+const speeds = [1.5, 1.75, 2, 2.2];
 
 function HeadphonesIcon() {
   return (
@@ -221,36 +221,6 @@ export function Story() {
     return poll.promise;
   };
 
-  const playReadyChunks = async (chunks, chapterId, resume, requestId) => {
-    let nextIndex = resume.chunkIndex;
-    while (nextIndex < chunks.length) {
-      if (requestId !== playbackRequestRef.current) return;
-      const chunk = chunks[nextIndex];
-      if (!chunk || chunk.index !== nextIndex) {
-        throw new Error(`Không tìm thấy audio của đoạn ${nextIndex + 1}.`);
-      }
-
-      currentChunkRef.current = nextIndex;
-      playingChunkRef.current = true;
-      try {
-        setStatus(`Đang phát đoạn ${nextIndex + 1}/${chunks.length}`);
-        await playUrl(
-          chunk.url,
-          true,
-          nextIndex === resume.chunkIndex ? resume.positionSeconds : 0,
-          requestId,
-        );
-      } finally {
-        playingChunkRef.current = false;
-      }
-      if (requestId !== playbackRequestRef.current) return;
-      nextIndex += 1;
-      await savePlaybackStateNow(chapterId, nextIndex, 0);
-    }
-
-    if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
-  };
-
   const watchJobProgress = async (jobId) => {
     while (progressJobRef.current === jobId) {
       const job = await getJobStatus(jobId);
@@ -259,9 +229,7 @@ export function Story() {
       if (job.totalChunks) {
         const completedChunks = job.completedCount ?? 0;
         const progress = Math.round((completedChunks / job.totalChunks) * 100);
-        setStatus((currentStatus) => currentStatus.startsWith('Đang phát')
-          ? `Đang phát | Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`
-          : `Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`);
+        setStatus(`Đang tạo audio: ${completedChunks}/${job.totalChunks} (${progress}%)`);
       }
       await new Promise((resolve) => {
         progressTimerRef.current = window.setTimeout(resolve, 500);
@@ -270,8 +238,6 @@ export function Story() {
   };
 
   const playJob = async (jobId, chapterId, resume = resumeRef.current, requestId = playbackRequestRef.current) => {
-    let nextIndex = resume?.chunkIndex || 0;
-    const chunks = [];
     progressJobRef.current = jobId;
     watchJobProgress(jobId).catch(() => {});
     while (true) {
@@ -279,32 +245,18 @@ export function Story() {
       const job = await getJobStatus(jobId);
       if (requestId !== playbackRequestRef.current) return;
       if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
-      (job.completedChunks || []).forEach((chunk) => { chunks[chunk.index] = chunk.url; });
-      if (chunks[nextIndex]) {
-        const currentIndex = nextIndex++;
-        const chunkUrl = chunks[currentIndex];
-        currentChunkRef.current = currentIndex;
-        playingChunkRef.current = true;
-        try {
-          setStatus(`Đang phát đoạn ${currentIndex + 1}/${job.totalChunks || '?'} | Đã tạo: ${job.completedCount || 0}/${job.totalChunks || '?'}`);
-          await playUrl(chunkUrl, true, currentIndex === resume?.chunkIndex ? resume.positionSeconds : 0, requestId);
-          savePlaybackState(chapterId, nextIndex, 0);
-        } finally {
-          playingChunkRef.current = false;
-        }
-        continue;
-      }
       if (job.status === 'completed') {
-        if (nextIndex >= (job.totalChunks || 0)) {
-          setStatus('Đang tạo: 100% | Đã phát xong');
-          return;
-        }
-        if (job.finalUrl) { await playUrl(job.finalUrl, false, 0, requestId); setStatus('Đang phát'); return; }
+        if (!job.finalUrl) throw new Error('Audio đã tạo xong nhưng không tìm thấy tệp audio hoàn chỉnh.');
+        currentChunkRef.current = 0;
+        setStatus('Đang phát toàn bộ tập...');
+        await playUrl(job.finalUrl, true, resume.positionSeconds, requestId);
+        if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
+        return;
       }
       if (job.totalChunks) {
-        const completedChunks = job.completedCount ?? chunks.filter(Boolean).length;
+        const completedChunks = job.completedCount ?? 0;
         const progress = Math.round((completedChunks / job.totalChunks) * 100);
-        setStatus(`Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`);
+        setStatus(`Đang tạo audio: ${completedChunks}/${job.totalChunks} (${progress}%)`);
       } else setStatus('Đang tạo audio...');
       await new Promise((resolve) => { timerRef.current = window.setTimeout(resolve, 500); });
     }
@@ -339,21 +291,18 @@ export function Story() {
       setSpeed(saved.playbackRate);
       setVolume(saved.volume);
       resumeRef.current = { chunkIndex: saved.chunkIndex || 0, positionSeconds: saved.positionSeconds || 0 };
+      if (resumeRef.current.chunkIndex > 0) {
+        setStatus('Tiến độ cũ lưu theo từng đoạn nên không thể khôi phục chính xác; phát từ đầu tập.');
+        resumeRef.current = { chunkIndex: 0, positionSeconds: 0 };
+      }
       currentChunkRef.current = resumeRef.current.chunkIndex;
       const result = await requestJson(`/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(saved.voice)}`, { method: 'POST' });
       if (requestId !== playbackRequestRef.current) return;
       if (result.status === 'ready') {
-        if (result.chunks?.length) {
-          await playReadyChunks(result.chunks, chapter.id, resumeRef.current, requestId);
-        } else {
-          if (resumeRef.current.chunkIndex > 0) {
-            setStatus('Không lưu được vị trí đoạn cũ; phát tập từ đầu.');
-            resumeRef.current = { chunkIndex: 0, positionSeconds: 0 };
-          }
-          currentChunkRef.current = 0;
-          await playUrl(result.url, false, resumeRef.current.positionSeconds, requestId);
-          if (requestId === playbackRequestRef.current) setStatus('Đang phát');
-        }
+        currentChunkRef.current = 0;
+        setStatus('Đang phát toàn bộ tập...');
+        await playUrl(result.url, true, resumeRef.current.positionSeconds, requestId);
+        if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
       } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
     } catch (error) {
       if (requestId === playbackRequestRef.current) setStatus(error.message);

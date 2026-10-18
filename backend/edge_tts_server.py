@@ -503,7 +503,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
             voice = self.normalize_voice(payload.get("voice", "edge:vi-VN-HoaiMyNeural"))
-            playback_rate = min(2, max(0.75, float(payload.get("playbackRate", 1))))
+            playback_rate = min(3, max(0.75, float(payload.get("playbackRate", 1))))
             volume = min(1, max(0, float(payload.get("volume", 1))))
             chunk_index = max(0, int(payload.get("chunkIndex", 0)))
             position_seconds = max(0, float(payload.get("positionSeconds", 0)))
