@@ -5,9 +5,11 @@ import json
 import re
 import sys
 import threading
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,11 +41,11 @@ CHUNK_JOBS = {}
 CHUNK_JOBS_LOCK = threading.Lock()
 AUDIO_JOBS_BY_KEY = {}
 AUDIO_JOB_START_LOCK = threading.Lock()
-EDGE_TTS_JOB_LOCK = threading.Lock()
 AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_CONCURRENCY = 2
+EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 120
 CHAPTER_URL_PATTERN = re.compile(r"^/truyen/[^/]+/chuong-(\d+)/?$", re.IGNORECASE)
 TRUYEN_H_HOST = "truyen-h.com"
@@ -314,8 +316,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, self.list_stories())
             return
 
-        if path == "/api/db-status":
-            self.send_json(HTTPStatus.OK, self.database_status())
+        if path == "/api/runtime-info":
+            self.send_json(HTTPStatus.OK, {
+                "pythonExecutable": sys.executable,
+                "edgeTtsVersion": edge_tts.__version__,
+            })
             return
 
         audio_job_match = re.fullmatch(r"/api/audio-jobs/([a-f0-9]+)", path)
@@ -736,7 +741,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             else:
                 cache_id = cache["id"]
                 cursor.execute("UPDATE chapter_audios SET status = 'generating', error_message = NULL WHERE id = %s", (cache_id,))
-                cursor.execute("DELETE FROM audio_chunks WHERE chapter_audio_id = %s", (cache_id,))
             connection.commit()
             cursor.close()
             cursor = None
@@ -770,6 +774,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 "ON DUPLICATE KEY UPDATE audio_data = VALUES(audio_data)",
                 (chunk_id, cache_id, index, audio),
             )
+            cursor.execute(
+                "SELECT id FROM audio_chunks WHERE chapter_audio_id = %s AND chunk_index = %s",
+                (cache_id, index),
+            )
+            chunk_id = cursor.fetchone()[0]
             connection.commit()
         except Exception:
             connection.rollback()
@@ -784,12 +793,37 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
     async def synthesize_chunks_parallel(self, chunks, voice, job_id, cache_id, max_concurrency=4):
         semaphore = asyncio.Semaphore(max_concurrency)
+        generation_started_at = time.monotonic()
+        connection = get_connection()
+        cursor = None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT id, chunk_index FROM audio_chunks WHERE chapter_audio_id = %s ORDER BY chunk_index",
+                (cache_id,),
+            )
+            existing_chunks = cursor.fetchall()
+        finally:
+            if cursor:
+                cursor.close()
+            if connection.is_connected():
+                connection.close()
+
+        completed_indices = {chunk_index for _, chunk_index in existing_chunks}
+        with CHUNK_JOBS_LOCK:
+            CHUNK_JOBS[job_id]["completedChunks"] = [
+                {"index": chunk_index, "url": f"/api/audio-chunks/{chunk_id}"}
+                for chunk_id, chunk_index in existing_chunks
+            ]
+            CHUNK_JOBS[job_id]["completedCount"] = len(existing_chunks)
+        first_chunk_ready = 0 in completed_indices
 
         async def synth_one(index, text):
             async with semaphore:
                 last_error = None
                 received_audio_bytes = 0
                 next_progress_bytes = 1024 * 1024
+                chunk_started_at = time.monotonic()
                 print(
                     f"[audio {job_id}] Đang tạo đoạn {index + 1}/{len(chunks)} "
                     f"({len(text):,} ký tự)...",
@@ -808,13 +842,18 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
 
                 for attempt in range(3):
+                    attempt_started_at = time.monotonic()
                     try:
                         received_audio_bytes = 0
                         next_progress_bytes = 1024 * 1024
-                        audio = await self.synthesize(text, voice, report_audio_progress)
+                        audio = await asyncio.get_running_loop().run_in_executor(
+                            EDGE_TTS_EXECUTOR,
+                            asyncio.run,
+                            self.synthesize(text, voice, report_audio_progress),
+                        )
                         print(
                             f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
-                            f"({len(audio):,} byte).",
+                            f"({len(audio):,} byte, {time.monotonic() - chunk_started_at:.1f}s).",
                             flush=True,
                         )
                         return index, audio
@@ -828,7 +867,9 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         )
                         print(
                             f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                            f"(lần {attempt + 1}/3): {last_error}",
+                            f"(lần {attempt + 1}/3, {type(last_error).__name__}, "
+                            f"{time.monotonic() - attempt_started_at:.1f}s, "
+                            f"{received_audio_bytes:,} byte): {last_error}",
                             flush=True,
                         )
                         if attempt < 2:
@@ -836,19 +877,33 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 assert last_error is not None
                 raise last_error
 
-        tasks = [asyncio.create_task(synth_one(index, text)) for index, text in enumerate(chunks)]
+        tasks = [
+            asyncio.create_task(synth_one(index, text))
+            for index, text in enumerate(chunks)
+            if index not in completed_indices
+        ]
+        completed_count = len(existing_chunks)
         results = []
         for task in asyncio.as_completed(tasks):
             result = await task
             results.append(result)
             index, audio = result
             self.store_chunk(job_id, cache_id, index, audio)
+            if index == 0 and not first_chunk_ready:
+                first_chunk_ready = True
+                print(
+                    f"[audio {job_id}] Chunk đầu tiên sẵn sàng sau "
+                    f"{time.monotonic() - generation_started_at:.1f}s.",
+                    flush=True,
+                )
+            completed_count += 1
             with CHUNK_JOBS_LOCK:
-                CHUNK_JOBS[job_id]["completedCount"] = len(results)
+                CHUNK_JOBS[job_id]["completedCount"] = completed_count
         results.sort(key=lambda item: item[0])
         return results
 
     def run_chunk_job(self, job_id, job_key, cache_id, chapter_id, voice, content):
+        job_started_at = time.monotonic()
         chunks = self.split_content(content)
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["totalChunks"] = len(chunks)
@@ -858,17 +913,29 @@ class AudioHandler(SimpleHTTPRequestHandler):
             flush=True,
         )
         try:
-            with EDGE_TTS_JOB_LOCK:
-                results = asyncio.run(
-                    self.synthesize_chunks_parallel(
-                        chunks,
-                        voice,
-                        job_id,
-                        cache_id,
-                        max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
-                    )
+            asyncio.run(
+                self.synthesize_chunks_parallel(
+                    chunks,
+                    voice,
+                    job_id,
+                    cache_id,
+                    max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
                 )
-            full_audio = b"".join(audio for _, audio in results)
+            )
+            connection = get_connection()
+            cursor = None
+            try:
+                cursor = connection.cursor()
+                cursor.execute(
+                    "SELECT audio_data FROM audio_chunks WHERE chapter_audio_id = %s ORDER BY chunk_index",
+                    (cache_id,),
+                )
+                full_audio = b"".join(row[0] for row in cursor.fetchall())
+            finally:
+                if cursor:
+                    cursor.close()
+                if connection.is_connected():
+                    connection.close()
 
             connection = get_connection()
             cursor = connection.cursor()
@@ -887,7 +954,8 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 CHUNK_JOBS[job_id].update({"status": "completed", "finalUrl": f"/api/audio/{audio_id}"})
             print(
                 f"[audio {job_id}] HOÀN TẤT chương {chapter_id}: "
-                f"{len(chunks)} đoạn, {len(full_audio):,} byte audio.",
+                f"{len(chunks)} đoạn, {len(full_audio):,} byte audio, "
+                f"{time.monotonic() - job_started_at:.1f}s tổng.",
                 flush=True,
             )
         except Exception as error:
@@ -974,21 +1042,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, {"id": story_id, "title": title, "description": description, "chapters": []})
         except mysql.connector.Error as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
-
-    def database_status(self):
-        connection = get_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT DATABASE() AS database_name, COUNT(*) AS audio_count FROM audios")
-        status = cursor.fetchone()
-        cursor.close()
-        connection.close()
-        return {
-            "database": status["database_name"],
-            "audioCount": status["audio_count"],
-            "storage": "MySQL audios.audio_data",
-            "edgeTtsVersion": edge_tts.__version__,
-            "pythonExecutable": sys.executable,
-        }
 
     def stream_audio(self, audio_id):
         connection = get_connection()

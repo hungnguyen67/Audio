@@ -33,11 +33,13 @@ export function Story() {
   const playingChunkRef = useRef(false);
   const progressTimerRef = useRef(null);
   const progressJobRef = useRef(null);
+  const jobPollRef = useRef({ jobId: null, lastFetchedAt: 0, latest: null, promise: null });
   const persistTimerRef = useRef(null);
   const playbackRequestRef = useRef(0);
   const currentChunkRef = useRef(0);
   const resumeRef = useRef({ chunkIndex: 0, positionSeconds: 0 });
   const currentChapterRef = useRef(null);
+  const audioChapterRef = useRef(null);
   const [selected, setSelected] = useState(null);
   const [lastListenedChapter, setLastListenedChapter] = useState(null);
   const [voice, setVoice] = useState(localStorage.getItem('audio-voice') || 'edge:vi-VN-HoaiMyNeural');
@@ -110,8 +112,10 @@ export function Story() {
         voice: settings.voice ?? voice,
         playbackRate: settings.playbackRate ?? speed,
         volume: settings.volume ?? volume,
-        chunkIndex: currentChunkRef.current,
-        positionSeconds: audioRef.current?.currentTime || 0,
+        chunkIndex: audioChapterRef.current === currentChapterRef.current ? currentChunkRef.current : 0,
+        positionSeconds: audioChapterRef.current === currentChapterRef.current
+          ? audioRef.current?.currentTime || 0
+          : 0,
       }),
     }).catch(() => {});
   };
@@ -149,18 +153,40 @@ export function Story() {
       if (requestId !== playbackRequestRef.current || error.name === 'AbortError') return;
       throw error;
     }
+    if (requestId !== playbackRequestRef.current) return;
+    audioChapterRef.current = currentChapterRef.current;
     if (playback) await playback;
   };
 
+  const getJobStatus = (jobId) => {
+    let poll = jobPollRef.current;
+    if (poll.jobId !== jobId) {
+      poll = { jobId, lastFetchedAt: 0, latest: null, promise: null };
+      jobPollRef.current = poll;
+    }
+    if (poll.promise) return poll.promise;
+    if (poll.latest && Date.now() - poll.lastFetchedAt < 450) return Promise.resolve(poll.latest);
+    poll.promise = requestJson(`/api/audio-jobs/${jobId}`)
+      .then((job) => {
+        poll.latest = job;
+        poll.lastFetchedAt = Date.now();
+        return job;
+      })
+      .finally(() => { poll.promise = null; });
+    return poll.promise;
+  };
+
   const watchJobProgress = async (jobId) => {
-    while (true) {
-      const job = await requestJson(`/api/audio-jobs/${jobId}`);
+    while (progressJobRef.current === jobId) {
+      const job = await getJobStatus(jobId);
       if (progressJobRef.current !== jobId) return;
       if (job.status === 'failed' || job.status === 'completed') return;
       if (job.totalChunks) {
         const completedChunks = job.completedCount ?? 0;
         const progress = Math.round((completedChunks / job.totalChunks) * 100);
-        setStatus(`Đang phát | Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`);
+        setStatus((currentStatus) => currentStatus.startsWith('Đang phát')
+          ? `Đang phát | Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`
+          : `Đang tạo: ${completedChunks}/${job.totalChunks} (${progress}%)`);
       }
       await new Promise((resolve) => {
         progressTimerRef.current = window.setTimeout(resolve, 500);
@@ -175,7 +201,7 @@ export function Story() {
     watchJobProgress(jobId).catch(() => {});
     while (true) {
       if (requestId !== playbackRequestRef.current) return;
-      const job = await requestJson(`/api/audio-jobs/${jobId}`);
+      const job = await getJobStatus(jobId);
       if (requestId !== playbackRequestRef.current) return;
       if (job.status === 'failed') throw new Error(job.message || 'Tạo audio thất bại.');
       (job.completedChunks || []).forEach((chunk) => { chunks[chunk.index] = chunk.url; });
@@ -210,9 +236,19 @@ export function Story() {
   };
 
   const selectChapter = async (chapter, shouldPlay = true) => {
+    const previousChapterId = currentChapterRef.current;
+    if (previousChapterId && previousChapterId === audioChapterRef.current) {
+      window.clearTimeout(persistTimerRef.current);
+      savePlaybackStateNow(
+        previousChapterId,
+        currentChunkRef.current,
+        audioRef.current?.currentTime || 0,
+      );
+    }
     const requestId = playbackRequestRef.current + 1;
     playbackRequestRef.current = requestId;
     window.clearTimeout(timerRef.current);
+    window.clearTimeout(progressTimerRef.current);
     progressJobRef.current = null;
     audioRef.current?.pause();
     setSelected(chapter);
@@ -391,14 +427,34 @@ export function Story() {
                   ref={audioRef}
                   controls
                   onEnded={finishChapter}
-                  onTimeUpdate={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
-                  onSeeked={() => savePlaybackStateNow(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
-                  onPause={() => savePlaybackStateNow(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
+                  onTimeUpdate={() => {
+                    if (audioChapterRef.current === currentChapterRef.current) {
+                      savePlaybackState(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                    }
+                  }}
+                  onSeeked={() => {
+                    if (audioChapterRef.current === currentChapterRef.current) {
+                      savePlaybackStateNow(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                    }
+                  }}
+                  onPause={() => {
+                    if (audioChapterRef.current === currentChapterRef.current) {
+                      savePlaybackStateNow(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                    }
+                  }}
                   onLoadedMetadata={() => {
                     audioRef.current.volume = volume;
                   }}
-                  onVolumeChange={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
-                  onInput={() => savePlaybackState(currentChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0)}
+                  onVolumeChange={() => {
+                    if (audioChapterRef.current === currentChapterRef.current) {
+                      savePlaybackState(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                    }
+                  }}
+                  onInput={() => {
+                    if (audioChapterRef.current === currentChapterRef.current) {
+                      savePlaybackState(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                    }
+                  }}
                 />
                 <label className="volume-control">
                   <span>Âm lượng</span>
