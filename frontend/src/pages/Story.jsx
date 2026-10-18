@@ -46,9 +46,12 @@ export function Story() {
   const [speed, setSpeed] = useState(Number(localStorage.getItem('audio-playback-rate') || 1));
   const [autoNext, setAutoNext] = useState(localStorage.getItem('audio-auto-next') === 'true');
   const [volume, setVolume] = useState(Number(localStorage.getItem('audio-volume') ?? 1));
+  const playbackSettingsRef = useRef({ voice, speed, volume });
+  const storyProgressRef = useRef(null);
   const [chapterPage, setChapterPage] = useState(1);
   const [chapterPageSize, setChapterPageSize] = useState(5);
   const [status, setStatus] = useState('Vui lòng chọn một chương để bắt đầu nghe');
+  playbackSettingsRef.current = { voice, speed, volume };
   const visibleChapters = story
     ? story.chapters.slice((chapterPage - 1) * chapterPageSize, chapterPage * chapterPageSize)
     : [];
@@ -72,10 +75,45 @@ export function Story() {
       .catch(() => {});
   }, [storyId, story, chapterPageSize]);
 
-  useEffect(() => () => {
-    window.clearTimeout(timerRef.current);
-    window.clearTimeout(progressTimerRef.current);
-    window.clearTimeout(persistTimerRef.current);
+  useEffect(() => {
+    const persistOnExit = () => {
+      window.clearTimeout(persistTimerRef.current);
+      const chapterId = audioChapterRef.current;
+      if (chapterId && chapterId === currentChapterRef.current) {
+        const settings = playbackSettingsRef.current;
+        const body = JSON.stringify({
+          voice: settings.voice,
+          playbackRate: settings.speed,
+          volume: settings.volume,
+          chunkIndex: currentChunkRef.current,
+          positionSeconds: audioRef.current?.currentTime || 0,
+        });
+        fetch(`/api/playback-state/${chapterId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive: true,
+        }).catch((error) => console.error('Không thể lưu tiến độ nghe khi rời trang:', error));
+      }
+
+      const progress = storyProgressRef.current;
+      if (progress) {
+        fetch(`/api/story-progress/${progress.storyId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chapterId: progress.chapterId, chapterNumber: progress.chapterNumber }),
+          keepalive: true,
+        }).catch((error) => console.error('Không thể lưu tập đang nghe khi rời trang:', error));
+      }
+    };
+
+    window.addEventListener('pagehide', persistOnExit);
+    return () => {
+      window.removeEventListener('pagehide', persistOnExit);
+      window.clearTimeout(timerRef.current);
+      window.clearTimeout(progressTimerRef.current);
+      persistOnExit();
+    };
   }, []);
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
@@ -86,12 +124,14 @@ export function Story() {
   }, []);
   useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = speed; }, [speed]);
 
-  const savePlaybackStateNow = (chapterId, chunkIndex = currentChunkRef.current, positionSeconds = 0) => {
+  const savePlaybackStateNow = (chapterId, chunkIndex = currentChunkRef.current, positionSeconds = 0, keepalive = false) => {
     if (!chapterId) return;
+    if (keepalive) window.clearTimeout(persistTimerRef.current);
     return requestJson(`/api/playback-state/${chapterId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voice, playbackRate: speed, volume, chunkIndex, positionSeconds }),
+      keepalive,
     }).catch(() => {});
   };
 
@@ -123,6 +163,11 @@ export function Story() {
   const saveStoryProgress = (chapter) => {
     if (!storyId || !chapter) return;
     setLastListenedChapter(chapter.number);
+    storyProgressRef.current = {
+      storyId,
+      chapterId: chapter.id,
+      chapterNumber: chapter.number,
+    };
     requestJson(`/api/story-progress/${storyId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -174,6 +219,36 @@ export function Story() {
       })
       .finally(() => { poll.promise = null; });
     return poll.promise;
+  };
+
+  const playReadyChunks = async (chunks, chapterId, resume, requestId) => {
+    let nextIndex = resume.chunkIndex;
+    while (nextIndex < chunks.length) {
+      if (requestId !== playbackRequestRef.current) return;
+      const chunk = chunks[nextIndex];
+      if (!chunk || chunk.index !== nextIndex) {
+        throw new Error(`Không tìm thấy audio của đoạn ${nextIndex + 1}.`);
+      }
+
+      currentChunkRef.current = nextIndex;
+      playingChunkRef.current = true;
+      try {
+        setStatus(`Đang phát đoạn ${nextIndex + 1}/${chunks.length}`);
+        await playUrl(
+          chunk.url,
+          true,
+          nextIndex === resume.chunkIndex ? resume.positionSeconds : 0,
+          requestId,
+        );
+      } finally {
+        playingChunkRef.current = false;
+      }
+      if (requestId !== playbackRequestRef.current) return;
+      nextIndex += 1;
+      await savePlaybackStateNow(chapterId, nextIndex, 0);
+    }
+
+    if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
   };
 
   const watchJobProgress = async (jobId) => {
@@ -243,6 +318,7 @@ export function Story() {
         previousChapterId,
         currentChunkRef.current,
         audioRef.current?.currentTime || 0,
+        true,
       );
     }
     const requestId = playbackRequestRef.current + 1;
@@ -267,9 +343,17 @@ export function Story() {
       const result = await requestJson(`/api/chapters/${chapter.id}/audio-jobs?voice=${encodeURIComponent(saved.voice)}`, { method: 'POST' });
       if (requestId !== playbackRequestRef.current) return;
       if (result.status === 'ready') {
-        currentChunkRef.current = 0;
-        await playUrl(result.url, false, resumeRef.current.positionSeconds, requestId);
-        if (requestId === playbackRequestRef.current) setStatus('Đang phát');
+        if (result.chunks?.length) {
+          await playReadyChunks(result.chunks, chapter.id, resumeRef.current, requestId);
+        } else {
+          if (resumeRef.current.chunkIndex > 0) {
+            setStatus('Không lưu được vị trí đoạn cũ; phát tập từ đầu.');
+            resumeRef.current = { chunkIndex: 0, positionSeconds: 0 };
+          }
+          currentChunkRef.current = 0;
+          await playUrl(result.url, false, resumeRef.current.positionSeconds, requestId);
+          if (requestId === playbackRequestRef.current) setStatus('Đang phát');
+        }
       } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
     } catch (error) {
       if (requestId === playbackRequestRef.current) setStatus(error.message);
@@ -439,7 +523,7 @@ export function Story() {
                   }}
                   onPause={() => {
                     if (audioChapterRef.current === currentChapterRef.current) {
-                      savePlaybackStateNow(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0);
+                      savePlaybackStateNow(audioChapterRef.current, currentChunkRef.current, audioRef.current?.currentTime || 0, true);
                     }
                   }}
                   onLoadedMetadata={() => {

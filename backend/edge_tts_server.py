@@ -722,7 +722,21 @@ class AudioHandler(SimpleHTTPRequestHandler):
             )
             cache = cursor.fetchone()
             if cache and cache["status"] == "ready" and cache["audio_id"]:
-                self.send_json(HTTPStatus.OK, {"status": "ready", "url": f"/api/audio/{cache['audio_id']}", "cached": True})
+                cursor.execute(
+                    "SELECT id, chunk_index FROM audio_chunks "
+                    "WHERE chapter_audio_id = %s ORDER BY chunk_index",
+                    (cache["id"],),
+                )
+                chunks = [
+                    {"index": chunk["chunk_index"], "url": f"/api/audio-chunks/{chunk['id']}"}
+                    for chunk in cursor.fetchall()
+                ]
+                self.send_json(HTTPStatus.OK, {
+                    "status": "ready",
+                    "url": f"/api/audio/{cache['audio_id']}",
+                    "chunks": chunks,
+                    "cached": True,
+                })
                 return
 
             job_key = f"{chapter_id}:{voice}:{content_hash}"
