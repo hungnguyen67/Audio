@@ -910,11 +910,12 @@ audio {
 }
 
 .form-modal-backdrop .form-panel {
-  width: min(100%, 900px);
+  width: min(100%, 1080px);
   height: fit-content;
   max-height: calc(100vh - 40px);
   margin: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
 }
 
@@ -924,8 +925,8 @@ audio {
 
 .form-modal-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
+  gap: 28px;
   align-items: start;
   min-height: 0;
 }
@@ -940,13 +941,13 @@ audio {
 
 .form-modal-grid .ch-sub-list {
   margin-top: 0;
-  padding-left: 20px;
-  padding-right: 8px;
+  padding-left: 24px;
+  padding-right: 4px;
   border-left: 1px solid var(--border);
 }
 
 .ch-sub-items {
-  max-height: 300px;
+  max-height: min(420px, 55vh);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -963,11 +964,17 @@ audio {
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .form-group {
-  margin-bottom: 13px;
+  margin-bottom: 11px;
+}
+
+.chapter-number-title-grid {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 12px;
 }
 
 .form-label {
@@ -1006,8 +1013,9 @@ audio {
 
 .form-textarea {
   resize: vertical;
-  min-height: 180px;
-  line-height: 1.65;
+  min-height: 160px;
+  max-height: 36vh;
+  line-height: 1.6;
 }
 
 .form-footer {
@@ -1023,6 +1031,105 @@ audio {
   flex: 1;
   font-size: 12.5px;
   color: var(--text-muted);
+}
+
+.confirm-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(3px);
+}
+
+.confirm-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 22px;
+  width: min(100%, 440px);
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  animation: confirm-dialog-enter 0.16s ease-out;
+}
+
+.confirm-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: #b91c1c;
+  background: #fee2e2;
+  border-radius: 12px;
+}
+
+.confirm-dialog-content {
+  align-self: center;
+  min-width: 0;
+}
+
+.confirm-dialog-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.confirm-dialog-description {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.confirm-dialog-delete {
+  color: #fff;
+  background: #dc2626;
+  border: 1px solid #dc2626;
+}
+
+.confirm-dialog-delete:hover:not(:disabled) {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.confirm-dialog-delete:focus-visible,
+.confirm-dialog-actions .btn:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+}
+
+.confirm-dialog-actions .btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@keyframes confirm-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .ch-sub-list {
@@ -1041,8 +1148,8 @@ audio {
 .ch-sub-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   color: var(--text-2);
@@ -1076,7 +1183,7 @@ audio {
 
 .admin-import-controls {
   display: grid;
-  grid-template-columns: minmax(170px, 2fr) minmax(70px, 0.7fr) minmax(70px, 0.7fr) auto;
+  grid-template-columns: minmax(160px, 1fr) 72px 72px auto;
   align-items: end;
   gap: 8px;
 }
@@ -1089,32 +1196,66 @@ audio {
   margin-bottom: 0;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
   .form-modal-backdrop .form-panel {
-    overflow-y: auto;
+    max-height: calc(100vh - 24px);
   }
 
   .form-modal-grid {
     grid-template-columns: 1fr;
+    gap: 18px;
   }
 
   .form-modal-grid .ch-sub-list {
-    padding-top: 16px;
+    padding-top: 14px;
     padding-left: 0;
+    padding-right: 0;
     border-top: 1px solid var(--border);
     border-left: 0;
   }
 
   .ch-sub-items {
-    max-height: 240px;
+    max-height: 280px;
   }
 
   .admin-import-controls {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 72px 72px;
   }
 
   .admin-import-url,
   .admin-import-controls > .btn {
     grid-column: 1 / -1;
+  }
+
+  .admin-import-controls > .form-group {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .form-modal-backdrop {
+    padding: 12px;
+  }
+
+  .form-modal-backdrop .form-panel {
+    padding: 18px;
+    max-height: calc(100vh - 24px);
+  }
+
+  .chapter-number-title-grid {
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .form-footer {
+    flex-wrap: wrap;
+  }
+
+  .form-msg {
+    flex-basis: 100%;
+  }
+
+  .confirm-dialog {
+    padding: 20px;
   }
 }

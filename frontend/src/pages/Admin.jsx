@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter } from '../store';
 import { Pagination } from '../shared/Pagination';
 import { toast } from '../shared/Toast';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { requestJson } from '../shared/api';
 import { splitTextIntoChapters } from '../shared/textChapters';
 
@@ -55,7 +56,8 @@ export function Admin() {
   const [savingImportedChapters, setSavingImportedChapters] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const [pendingDelete, setPendingDelete] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [checkedChapterIds, setCheckedChapterIds] = useState([]);
   const [bulkDeletingChapters, setBulkDeletingChapters] = useState(false);
   const chapterSelectionDrag = useRef(null);
@@ -388,25 +390,30 @@ export function Admin() {
 
   const removeStory = async (id) => {
     const story = stories.find((item) => item.id === id);
+    setDeleting(true);
     try {
       await dispatch(deleteStory(id)).unwrap();
-      dispatch(fetchStories());
-      setPendingDelete(null);
+      await dispatch(fetchStories()).unwrap();
+      setConfirmDialog(null);
       if (storyId === id) { setStoryId(null); setEditing(null); }
       toast.success(`Đã xóa truyện${story ? ` "${story.title}"` : ''}`, story
         ? `${story.chapters.length} chương liên quan đã được xóa.`
         : 'Truyện và các chương liên quan đã được xóa.');
     } catch (err) {
       toast.error('Không thể xóa truyện', err.message);
+    } finally {
+      setConfirmDialog(null);
+      setDeleting(false);
     }
   };
 
   const removeChapter = async (id) => {
     const chapter = selected?.chapters.find((item) => item.id === id);
+    setDeleting(true);
     try {
       await dispatch(deleteChapter(id)).unwrap();
-      dispatch(fetchStories());
-      setPendingDelete(null);
+      await dispatch(fetchStories()).unwrap();
+      setConfirmDialog(null);
       setCheckedChapterIds((ids) => ids.filter((chapterId) => chapterId !== id));
       if (editing?.id === id) setEditing(null);
       toast.success(`Đã xóa chương ${chapter?.number || ''}`.trim(), chapter
@@ -414,15 +421,17 @@ export function Admin() {
         : 'Chương đã được xóa khỏi truyện.');
     } catch (err) {
       toast.error('Không thể xóa chương', err.message);
+    } finally {
+      setConfirmDialog(null);
+      setDeleting(false);
     }
   };
 
-  const deleteSelectedChapters = async () => {
-    const chapters = (selected?.chapters || []).filter((chapter) => checkedChapterIds.includes(chapter.id));
-    if (!chapters.length || bulkDeletingChapters) return;
-    const confirmed = window.confirm(`Xóa vĩnh viễn ${chapters.length} chương đã chọn khỏi truyện "${selected.title}"?`);
-    if (!confirmed) return;
+  const deleteSelectedChapters = async (chapterIds) => {
+    const chapters = (selected?.chapters || []).filter((chapter) => chapterIds.includes(chapter.id));
+    if (!chapters.length || bulkDeletingChapters || deleting) return;
 
+    setDeleting(true);
     setBulkDeletingChapters(true);
     const deletedIds = [];
     const failures = [];
@@ -439,6 +448,7 @@ export function Admin() {
       setCheckedChapterIds(failures.map(({ chapter }) => chapter.id));
       if (editing && deletedIds.includes(editing.id)) setEditing(null);
       await dispatch(fetchStories()).unwrap();
+      setConfirmDialog(null);
       if (failures.length) {
         const firstFailure = failures[0];
         toast.error(
@@ -451,7 +461,9 @@ export function Admin() {
     } catch (error) {
       toast.error(`Đã xóa ${deletedIds.length}/${chapters.length} chương`, `Không thể làm mới danh sách chương: ${error.message}`);
     } finally {
+      setConfirmDialog(null);
       setBulkDeletingChapters(false);
+      setDeleting(false);
     }
   };
 
@@ -469,14 +481,44 @@ export function Admin() {
   };
 
   const requestDelete = (type, id) => {
-    const key = `${type}:${id}`;
-    if (pendingDelete === key) {
-      if (type === 'story') removeStory(id);
-      else removeChapter(id);
-      return;
-    }
-    setPendingDelete(key);
+    setConfirmDialog({ type, id });
   };
+
+  const requestDeleteSelectedChapters = () => {
+    if (!selected || !checkedChapterIds.length || bulkDeletingChapters) return;
+    setConfirmDialog({ type: 'chapters', ids: checkedChapterIds });
+  };
+
+  const confirmDelete = () => {
+    if (!confirmDialog || deleting) return;
+    if (confirmDialog.type === 'story') {
+      removeStory(confirmDialog.id);
+    } else if (confirmDialog.type === 'chapter') {
+      removeChapter(confirmDialog.id);
+    } else {
+      deleteSelectedChapters(confirmDialog.ids);
+    }
+  };
+
+  const confirmation = confirmDialog?.type === 'story'
+    ? {
+      title: 'Xóa truyện?',
+      description: `Truyện "${stories.find((story) => story.id === confirmDialog.id)?.title || ''}" cùng toàn bộ chương liên quan sẽ bị xóa vĩnh viễn. Bạn không thể hoàn tác thao tác này.`,
+    }
+    : confirmDialog?.type === 'chapter'
+      ? {
+        title: 'Xóa chương?',
+        description: (() => {
+          const chapter = selected?.chapters.find((item) => item.id === confirmDialog.id);
+          return `Chương ${chapter?.number || ''}${chapter?.title ? ` "${chapter.title}"` : ''} sẽ bị xóa vĩnh viễn khỏi truyện "${selected?.title || ''}". Thao tác này không thể hoàn tác.`;
+        })(),
+      }
+      : confirmDialog?.type === 'chapters'
+        ? {
+          title: `Xóa ${confirmDialog.ids.length} chương?`,
+          description: `Các chương đã chọn trong truyện "${selected?.title || ''}" sẽ bị xóa vĩnh viễn. Thao tác này không thể hoàn tác.`,
+        }
+        : null;
 
   return (
     <>
@@ -533,7 +575,7 @@ export function Admin() {
                       className="btn-open"
                       onClick={(e) => { e.stopPropagation(); requestDelete('story', story.id); }}
                     >
-                      {pendingDelete === `story:${story.id}` ? 'Tiếp' : 'Xóa'}
+                      Xóa
                     </button>
                   </span>
                 </div>
@@ -580,7 +622,7 @@ export function Admin() {
                                 setImportUrl(event.target.value);
                                 localStorage.setItem('audio-story:lastChapterImportUrl', event.target.value);
                               }}
-                              placeholder="https://metruyenchu.co/.../chuong-1 hoặc https://truyen-h.com/reader?story=...&chapter=1"
+                              placeholder="Dán link chương từ metruyenchu.co hoặc truyen-h.com"
                               disabled={importing || savingImportedChapters}
                             />
                           </div>
@@ -632,17 +674,18 @@ export function Admin() {
                         </button>
                       </div>
                     )}
-                    <div className="form-group">
-                  <label className="form-label">Tên truyện</label>
-                  <input
-                    className="form-input"
-                    value={form.story}
-                    readOnly={Boolean(storyId)}
-                    onChange={(e) => setForm({ ...form, story: e.target.value })}
-                    placeholder="Nhập tên truyện..."
-                  />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    {!storyId && (
+                      <div className="form-group">
+                        <label className="form-label">Tên truyện</label>
+                        <input
+                          className="form-input"
+                          value={form.story}
+                          onChange={(e) => setForm({ ...form, story: e.target.value })}
+                          placeholder="Nhập tên truyện..."
+                        />
+                      </div>
+                    )}
+                    <div className="chapter-number-title-grid">
                       <div className="form-group">
                     <label className="form-label">Số chương</label>
                     <input
@@ -692,28 +735,12 @@ export function Admin() {
                 {selected && selected.chapters.length > 0 && (
                   <div className="ch-sub-list">
                     <div className="ch-sub-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <span>Các chương hiện có ({checkedChapterIds.length} đã chọn)</span>
+                      <span>Các chương hiện có</span>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         <button
                           type="button"
                           className="btn-small-action"
-                          onClick={() => setCheckedChapterIds(selected.chapters.map((chapter) => chapter.id))}
-                          disabled={bulkDeletingChapters || checkedChapterIds.length === selected.chapters.length}
-                        >
-                          Chọn tất cả
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-small-action"
-                          onClick={() => setCheckedChapterIds([])}
-                          disabled={bulkDeletingChapters || !checkedChapterIds.length}
-                        >
-                          Bỏ chọn
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-small-action"
-                          onClick={deleteSelectedChapters}
+                          onClick={requestDeleteSelectedChapters}
                           disabled={bulkDeletingChapters || !checkedChapterIds.length}
                         >
                           {bulkDeletingChapters ? 'Đang xóa...' : `Xóa đã chọn (${checkedChapterIds.length})`}
@@ -759,7 +786,7 @@ export function Admin() {
                             {chapter.title}
                           </button>
                           <button className="btn-small-action" onClick={() => requestDelete('chapter', chapter.id)} disabled={bulkDeletingChapters}>
-                            {pendingDelete === `chapter:${chapter.id}` ? 'Tiếp' : 'Xóa'}
+                            Xóa
                           </button>
                         </div>
                       ))}
@@ -772,6 +799,17 @@ export function Admin() {
           )}
         </div>
       </main>
+      {confirmation && (
+        <ConfirmDialog
+          title={confirmation.title}
+          description={confirmation.description}
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => {
+            if (!deleting) setConfirmDialog(null);
+          }}
+        />
+      )}
     </>
   );
 }
