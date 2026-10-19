@@ -1563,6 +1563,62 @@ audio {
   margin-bottom: 0;
 }
 
+.admin-import-txt-button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 13px;
+  color: var(--text-2);
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+}
+
+.admin-import-txt-button:hover:not(:disabled) {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.admin-import-txt-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.admin-import-txt-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  color: #2563eb;
+  background: #dbeafe;
+  border-radius: 8px;
+}
+
+.admin-import-txt-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-import-txt-copy strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.admin-import-txt-copy small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .admin-sr-only {
   position: absolute;
   width: 1px;

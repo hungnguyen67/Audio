@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AudioLines, BookOpen, Home, Library, Menu, Plus, Sparkles } from 'lucide-react';
+import { AudioLines, BookOpen, Home, Library, Menu, Plus, Sparkles, Upload } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../store';
 import { Pagination } from '../shared/Pagination';
@@ -804,12 +804,16 @@ export function Admin() {
                         />
                         <button
                           type="button"
-                          className="btn btn-outline"
-                          style={{ marginTop: 8 }}
+                          className="admin-import-txt-button"
                           onClick={() => textFileInput.current?.click()}
                           disabled={importing || savingImportedChapters}
+                          aria-busy={importing}
                         >
-                          {importing ? 'Đang đọc TXT...' : 'Tách chương từ tệp TXT'}
+                          <span className="admin-import-txt-icon"><Upload size={18} /></span>
+                          <span className="admin-import-txt-copy">
+                            <strong>{importing ? 'Đang đọc tệp TXT...' : 'Tách chương từ tệp TXT'}</strong>
+                            <small>Chọn tệp .txt để tự động nhận diện và chia chương</small>
+                          </span>
                         </button>
                       </div>
                     )}
