@@ -1563,12 +1563,18 @@ audio {
   margin-bottom: 0;
 }
 
+.admin-import-txt-section {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+
 .admin-import-txt-button {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  margin-top: 8px;
+  margin-top: 0;
   padding: 11px 13px;
   color: var(--text-2);
   background: #f8fafc;

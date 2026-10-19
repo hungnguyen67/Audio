@@ -802,19 +802,22 @@ export function Admin() {
                           onChange={importTextFile}
                           disabled={importing || savingImportedChapters}
                         />
-                        <button
-                          type="button"
-                          className="admin-import-txt-button"
-                          onClick={() => textFileInput.current?.click()}
-                          disabled={importing || savingImportedChapters}
-                          aria-busy={importing}
-                        >
-                          <span className="admin-import-txt-icon"><Upload size={18} /></span>
-                          <span className="admin-import-txt-copy">
-                            <strong>{importing ? 'Đang đọc tệp TXT...' : 'Tách chương từ tệp TXT'}</strong>
-                            <small>Chọn tệp .txt để tự động nhận diện và chia chương</small>
-                          </span>
-                        </button>
+                        <div className="admin-import-txt-section">
+                          <label className="form-label">Tách chương từ tệp TXT</label>
+                          <button
+                            type="button"
+                            className="admin-import-txt-button"
+                            onClick={() => textFileInput.current?.click()}
+                            disabled={importing || savingImportedChapters}
+                            aria-busy={importing}
+                          >
+                            <span className="admin-import-txt-icon"><Upload size={18} /></span>
+                            <span className="admin-import-txt-copy">
+                              <strong>{importing ? 'Đang đọc tệp TXT...' : 'Chọn tệp TXT'}</strong>
+                              <small>Chọn tệp .txt để tự động nhận diện và chia chương</small>
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     )}
                     <div className="form-group">
