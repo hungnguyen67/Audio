@@ -272,7 +272,7 @@ export function Admin() {
     try {
       const chapters = splitTextIntoChapters(await file.text());
       if (!chapters.length) {
-        setImportStatus('Không tìm thấy tiêu đề chương. Hãy dùng các dòng như "Chương 1: Tên chương" trong tệp TXT.');
+        setImportStatus('Không tìm thấy tiêu đề chương. Hãy dùng các dòng như "Chương 1: Tên chương" hoặc "Thứ 0001 chương Tên chương" trong tệp TXT.');
         return;
       }
       setImportedChapters(chapters);

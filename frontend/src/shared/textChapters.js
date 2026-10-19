@@ -1,4 +1,4 @@
-const chapterHeading = /^[ \t]*(?:chương|chuong|chapter|chap\.?|tập|tap|phần|phan|part)\s+(\d+|[ivxlcdm]+)\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?([^\r\n]*)[ \t]*$/gim;
+const chapterHeading = /^[ \t]*(?:(?:chương|chuong|chapter|chap\.?|tập|tap|phần|phan|part)\s+(\d+|[ivxlcdm]+)\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?|thứ\s+(\d+)\s+chương\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?)([^\r\n]*)[ \t]*$/gim;
 
 function parseChapterNumber(value, fallback) {
   if (/^\d+$/.test(value)) return Number(value);
@@ -25,11 +25,12 @@ export function splitTextIntoChapters(text) {
     const prefix = index === 0 ? normalizedText.slice(0, heading.index).trim() : '';
     const body = normalizedText.slice(headingEnd, nextHeadingStart).trim();
     const content = [prefix, body].filter(Boolean).join('\n\n');
-    const title = heading[2].trim().replace(/^[：:.\-–—]\s*/, '');
+    const chapterNumber = parseChapterNumber(heading[1] || heading[2], index + 1);
+    const title = heading[3].trim().replace(/^[：:.\-–—]\s*/, '');
 
     return {
-      chapterNumber: parseChapterNumber(heading[1], index + 1),
-      title: title || `Chương ${parseChapterNumber(heading[1], index + 1)}`,
+      chapterNumber,
+      title: title || `Chương ${chapterNumber}`,
       content,
     };
   }).filter((chapter) => chapter.content);
