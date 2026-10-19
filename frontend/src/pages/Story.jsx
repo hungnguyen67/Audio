@@ -250,7 +250,6 @@ export function Story() {
         currentChunkRef.current = 0;
         setStatus('Đang phát toàn bộ tập...');
         await playUrl(job.finalUrl, true, resume.positionSeconds, requestId);
-        if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
         return;
       }
       if (job.totalChunks) {
@@ -302,7 +301,6 @@ export function Story() {
         currentChunkRef.current = 0;
         setStatus('Đang phát toàn bộ tập...');
         await playUrl(result.url, true, resumeRef.current.positionSeconds, requestId);
-        if (requestId === playbackRequestRef.current) setStatus('Đã phát xong tập');
       } else await playJob(result.jobId, chapter.id, resumeRef.current, requestId);
     } catch (error) {
       if (requestId === playbackRequestRef.current) setStatus(error.message);
@@ -311,10 +309,22 @@ export function Story() {
 
   const finishChapter = () => {
     if (playingChunkRef.current) return;
-    if (!selected || !autoNext || !story) return;
-    const next = story.chapters[story.chapters.findIndex((c) => c.id === selected.id) + 1];
-    if (next) { setStatus('Đã xong, đang chuyển chương tiếp...'); timerRef.current = window.setTimeout(() => selectChapter(next), 700); }
-    else setStatus('Đã nghe hết truyện');
+    if (!story) return;
+    if (!autoNext) {
+      setStatus('Đã phát xong tập');
+      return;
+    }
+
+    const currentIndex = story.chapters.findIndex((chapter) => chapter.id === currentChapterRef.current);
+    const next = currentIndex >= 0 ? story.chapters[currentIndex + 1] : null;
+    if (!next) {
+      setStatus('Đã nghe hết truyện');
+      return;
+    }
+
+    setStatus('Đã xong, đang chuyển chương tiếp...');
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => selectChapter(next), 700);
   };
 
   if (!story) {

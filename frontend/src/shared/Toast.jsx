@@ -27,12 +27,12 @@ export function Toast({ id, title, message, description, type = 'success', visib
 }
 
 export const toast = {
-  success: (title, description) => hotToast.custom(
+  success: (title, description, duration = 1000) => hotToast.custom(
     (item) => <Toast id={item.id} title={title} description={description} type="success" visible={item.visible} />,
-    { duration: 1000 },
+    { duration },
   ),
-  error: (title, description) => hotToast.custom(
+  error: (title, description, duration = 1000) => hotToast.custom(
     (item) => <Toast id={item.id} title={title} description={description} type="error" visible={item.visible} />,
-    { duration: 1000 },
+    { duration },
   ),
 };

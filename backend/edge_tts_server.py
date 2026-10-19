@@ -243,16 +243,16 @@ def get_connection():
 
 def auto_generate_missing_audio():
     print(
-        f"[auto audio] Background queue started; checking every {AUTO_AUDIO_INTERVAL_SECONDS}s.",
+        f"[auto audio] Background queue started; idle fallback check every {AUTO_AUDIO_INTERVAL_SECONDS}s.",
         flush=True,
     )
     while True:
+        AUTO_AUDIO_WAKE.clear()
         try:
             with CHUNK_JOBS_LOCK:
                 has_active_jobs = bool(AUDIO_JOBS_BY_KEY)
             if has_active_jobs:
                 AUTO_AUDIO_WAKE.wait(AUTO_AUDIO_INTERVAL_SECONDS)
-                AUTO_AUDIO_WAKE.clear()
                 continue
 
             connection = get_connection()
@@ -294,7 +294,6 @@ def auto_generate_missing_audio():
         except Exception as error:
             print(f"Auto audio check failed: {error}")
         AUTO_AUDIO_WAKE.wait(AUTO_AUDIO_INTERVAL_SECONDS)
-        AUTO_AUDIO_WAKE.clear()
 
 
 class AudioHandler(SimpleHTTPRequestHandler):
@@ -710,7 +709,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             voice = self.normalize_voice(query.get("voice", [None])[0])
             connection = get_connection()
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT id, title, content FROM chapters WHERE id = %s", (chapter_id,))
+            cursor.execute("SELECT id, chapter_number, title, content FROM chapters WHERE id = %s", (chapter_id,))
             chapter = cursor.fetchone()
             if not chapter:
                 self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy tập."})
@@ -765,7 +764,22 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 job_id = uuid.uuid4().hex
                 AUDIO_JOBS_BY_KEY[job_key] = job_id
                 CHUNK_JOBS[job_id] = {"status": "processing", "completedChunks": [], "completedCount": 0, "totalChunks": 0, "voice": voice}
-            threading.Thread(target=self.run_chunk_job, args=(job_id, job_key, cache_id, chapter_id, voice, chapter["content"]), daemon=True).start()
+            queued_at = time.perf_counter()
+            threading.Thread(
+                target=self.run_chunk_job,
+                args=(
+                    job_id,
+                    job_key,
+                    cache_id,
+                    chapter_id,
+                    chapter["chapter_number"],
+                    chapter["title"],
+                    voice,
+                    chapter["content"],
+                    queued_at,
+                ),
+                daemon=True,
+            ).start()
             self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": job_id})
         except Exception as error:
             if connection and connection.is_connected():
@@ -807,7 +821,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
     async def synthesize_chunks_parallel(self, chunks, voice, job_id, cache_id, max_concurrency=4):
         semaphore = asyncio.Semaphore(max_concurrency)
-        generation_started_at = time.monotonic()
+        generation_started_at = time.perf_counter()
+        chunk_latencies = []
+        retry_count = 0
+        retried_chunk_count = 0
+        chunk_store_seconds = 0.0
         connection = get_connection()
         cursor = None
         try:
@@ -837,7 +855,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 last_error = None
                 received_audio_bytes = 0
                 next_progress_bytes = 1024 * 1024
-                chunk_started_at = time.monotonic()
+                chunk_started_at = time.perf_counter()
                 print(
                     f"[audio {job_id}] Đang tạo đoạn {index + 1}/{len(chunks)} "
                     f"({len(text):,} ký tự)...",
@@ -856,7 +874,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
 
                 for attempt in range(3):
-                    attempt_started_at = time.monotonic()
+                    attempt_started_at = time.perf_counter()
                     try:
                         received_audio_bytes = 0
                         next_progress_bytes = 1024 * 1024
@@ -867,10 +885,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         )
                         print(
                             f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
-                            f"({len(audio):,} byte, {time.monotonic() - chunk_started_at:.1f}s).",
+                            f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
+                            f"{attempt} lần thử lại).",
                             flush=True,
                         )
-                        return index, audio
+                        return index, audio, time.perf_counter() - chunk_started_at, attempt
                     except Exception as error:
                         last_error = (
                             RuntimeError(
@@ -882,7 +901,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         print(
                             f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
                             f"(lần {attempt + 1}/3, {type(last_error).__name__}, "
-                            f"{time.monotonic() - attempt_started_at:.1f}s, "
+                            f"{time.perf_counter() - attempt_started_at:.2f}s, "
                             f"{received_audio_bytes:,} byte): {last_error}",
                             flush=True,
                         )
@@ -901,33 +920,75 @@ class AudioHandler(SimpleHTTPRequestHandler):
         for task in asyncio.as_completed(tasks):
             result = await task
             results.append(result)
-            index, audio = result
+            index, audio, chunk_latency, retries = result
+            chunk_latencies.append(chunk_latency)
+            retry_count += retries
+            retried_chunk_count += retries > 0
+            store_started_at = time.perf_counter()
             self.store_chunk(job_id, cache_id, index, audio)
+            chunk_store_seconds += time.perf_counter() - store_started_at
             if index == 0 and not first_chunk_ready:
                 first_chunk_ready = True
                 print(
                     f"[audio {job_id}] Chunk đầu tiên sẵn sàng sau "
-                    f"{time.monotonic() - generation_started_at:.1f}s.",
+                    f"{time.perf_counter() - generation_started_at:.2f}s.",
                     flush=True,
                 )
             completed_count += 1
             with CHUNK_JOBS_LOCK:
                 CHUNK_JOBS[job_id]["completedCount"] = completed_count
         results.sort(key=lambda item: item[0])
-        return results
+        synthesis_wall_seconds = time.perf_counter() - generation_started_at
+        average_chunk_seconds = sum(chunk_latencies) / len(chunk_latencies) if chunk_latencies else 0
+        max_chunk_seconds = max(chunk_latencies, default=0)
+        retry_rate = retried_chunk_count / len(chunk_latencies) if chunk_latencies else 0
+        print(
+            f"[audio {job_id}] Đoạn/TTS: {len(chunk_latencies)} mới, "
+            f"latency TB/cao nhất {average_chunk_seconds:.2f}/{max_chunk_seconds:.2f}s, "
+            f"{retried_chunk_count} đoạn phải thử lại ({retry_rate:.0%}), "
+            f"tổng retry {retry_count}; giai đoạn song song + lưu chunk "
+            f"{synthesis_wall_seconds:.2f}s (ghi chunk {chunk_store_seconds:.2f}s).",
+            flush=True,
+        )
+        return {
+            "chunkCount": len(chunk_latencies),
+            "averageChunkSeconds": average_chunk_seconds,
+            "maxChunkSeconds": max_chunk_seconds,
+            "retryCount": retry_count,
+            "retriedChunkCount": retried_chunk_count,
+            "retryRate": retry_rate,
+            "chunkStoreSeconds": chunk_store_seconds,
+            "parallelStageSeconds": synthesis_wall_seconds,
+        }
 
-    def run_chunk_job(self, job_id, job_key, cache_id, chapter_id, voice, content):
-        job_started_at = time.monotonic()
+    def run_chunk_job(
+        self,
+        job_id,
+        job_key,
+        cache_id,
+        chapter_id,
+        chapter_number,
+        chapter_title,
+        voice,
+        content,
+        queued_at,
+    ):
+        job_started_at = time.perf_counter()
+        thread_start_delay = job_started_at - queued_at
+        split_started_at = time.perf_counter()
         chunks = self.split_content(content)
+        split_seconds = time.perf_counter() - split_started_at
+        chapter_label = " ".join(chapter_title.split())
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["totalChunks"] = len(chunks)
         print(
-            f"[audio {job_id}] Bắt đầu chương {chapter_id}: "
-            f"{len(content):,} ký tự, chia thành {len(chunks)} đoạn.",
+            f'[audio {job_id}] Bắt đầu chương {chapter_number} "{chapter_label}" ({chapter_id}): '
+            f"{len(content):,} ký tự, chia thành {len(chunks)} đoạn "
+            f"({split_seconds:.4f}s; chờ thread {thread_start_delay:.4f}s).",
             flush=True,
         )
         try:
-            asyncio.run(
+            parallel_metrics = asyncio.run(
                 self.synthesize_chunks_parallel(
                     chunks,
                     voice,
@@ -936,6 +997,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
                 )
             )
+            read_started_at = time.perf_counter()
             connection = get_connection()
             cursor = None
             try:
@@ -944,13 +1006,19 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     "SELECT audio_data FROM audio_chunks WHERE chapter_audio_id = %s ORDER BY chunk_index",
                     (cache_id,),
                 )
-                full_audio = b"".join(row[0] for row in cursor.fetchall())
+                audio_rows = cursor.fetchall()
             finally:
                 if cursor:
                     cursor.close()
                 if connection.is_connected():
                     connection.close()
+            read_chunks_seconds = time.perf_counter() - read_started_at
 
+            join_started_at = time.perf_counter()
+            full_audio = b"".join(row[0] for row in audio_rows)
+            join_seconds = time.perf_counter() - join_started_at
+
+            persist_started_at = time.perf_counter()
             connection = get_connection()
             cursor = connection.cursor()
             audio_hash = hashlib.sha256(f"{voice}\n{content}".encode("utf-8")).hexdigest()
@@ -963,17 +1031,26 @@ class AudioHandler(SimpleHTTPRequestHandler):
             connection.commit()
             cursor.close()
             connection.close()
+            persist_seconds = time.perf_counter() - persist_started_at
 
             with CHUNK_JOBS_LOCK:
                 CHUNK_JOBS[job_id].update({"status": "completed", "finalUrl": f"/api/audio/{audio_id}"})
+            total_seconds = time.perf_counter() - job_started_at
             print(
-                f"[audio {job_id}] HOÀN TẤT chương {chapter_id}: "
+                f'[audio {job_id}] HOÀN TẤT chương {chapter_number} "{chapter_label}" ({chapter_id}): '
                 f"{len(chunks)} đoạn, {len(full_audio):,} byte audio, "
-                f"{time.monotonic() - job_started_at:.1f}s tổng.",
+                f"{total_seconds:.2f}s tổng. Benchmark: chia {split_seconds:.4f}s; "
+                f"TTS + ghi chunk {parallel_metrics['parallelStageSeconds']:.2f}s "
+                f"(ghi chunk {parallel_metrics['chunkStoreSeconds']:.2f}s); "
+                f"đọc chunk {read_chunks_seconds:.2f}s; ghép bytes {join_seconds:.4f}s; "
+                f"lưu audio cuối {persist_seconds:.2f}s.",
                 flush=True,
             )
         except Exception as error:
-            print(f"[audio {job_id}] THẤT BẠI chương {chapter_id}: {error}", flush=True)
+            print(
+                f'[audio {job_id}] THẤT BẠI chương {chapter_number} "{chapter_label}" ({chapter_id}): {error}',
+                flush=True,
+            )
             connection = get_connection()
             cursor = connection.cursor()
             cursor.execute("UPDATE chapter_audios SET status = 'error', error_message = %s WHERE id = %s", (str(error)[:500], cache_id))

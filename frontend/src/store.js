@@ -17,7 +17,13 @@ export const deleteStory = createAsyncThunk('stories/deleteStory', (id) => reque
 const storiesSlice = createSlice({
   name: 'stories',
   initialState: { items: [], status: 'idle', error: null },
-  reducers: {},
+  reducers: {
+    receiveStories(state, action) {
+      state.items = action.payload;
+      state.status = 'succeeded';
+      state.error = null;
+    },
+  },
   extraReducers: (builder) => {
     builder.addCase(fetchStories.pending, (state) => { state.status = 'loading'; state.error = null; })
       .addCase(fetchStories.fulfilled, (state, action) => { state.status = 'succeeded'; state.items = action.payload; })
@@ -26,4 +32,5 @@ const storiesSlice = createSlice({
   },
 });
 
+export const { receiveStories } = storiesSlice.actions;
 export const store = configureStore({ reducer: { stories: storiesSlice.reducer } });
