@@ -397,11 +397,16 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_GATEWAY, {"message": str(error)})
 
     def do_PUT(self):
-        playback_match = re.fullmatch(r"/api/playback-state/([a-f0-9]+)", urlsplit(self.path).path)
+        path = urlsplit(self.path).path
+        story_match = re.fullmatch(r"/api/stories/([a-f0-9]+)", path)
+        if story_match:
+            self.update_story(story_match.group(1))
+            return
+        playback_match = re.fullmatch(r"/api/playback-state/([a-f0-9]+)", path)
         if playback_match:
             self.save_playback_state(playback_match.group(1))
             return
-        story_progress_match = re.fullmatch(r"/api/story-progress/([a-f0-9]+)", urlsplit(self.path).path)
+        story_progress_match = re.fullmatch(r"/api/story-progress/([a-f0-9]+)", path)
         if story_progress_match:
             self.save_story_progress(story_progress_match.group(1))
             return
@@ -1131,6 +1136,39 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cursor.close()
             connection.close()
             self.send_json(HTTPStatus.OK, {"id": story_id, "title": title, "description": description, "chapters": []})
+        except mysql.connector.Error as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+
+    def update_story(self, story_id):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 4096:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên truyện không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Dữ liệu yêu cầu không hợp lệ."})
+                return
+            title = str(payload.get("title", "")).strip()
+            if not title:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên truyện không được để trống."})
+                return
+
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute("SELECT id FROM stories WHERE id = %s", (story_id,))
+            if not cursor.fetchone():
+                cursor.close()
+                connection.close()
+                self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy truyện."})
+                return
+            cursor.execute("UPDATE stories SET title = %s WHERE id = %s", (title, story_id))
+            connection.commit()
+            cursor.close()
+            connection.close()
+            self.send_json(HTTPStatus.OK, {"id": story_id, "title": title})
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Dữ liệu yêu cầu không hợp lệ: {error}"})
         except mysql.connector.Error as error:
             self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
 

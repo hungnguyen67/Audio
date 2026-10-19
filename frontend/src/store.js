@@ -5,6 +5,9 @@ export const fetchStories = createAsyncThunk('stories/fetch', () => requestJson(
 export const createStory = createAsyncThunk('stories/create', (title) => requestJson('/api/stories', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
 }));
+export const updateStory = createAsyncThunk('stories/updateStory', ({ id, title }) => requestJson(`/api/stories/${id}`, {
+  method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+}));
 export const saveChapter = createAsyncThunk('stories/saveChapter', ({ storyId, chapterNumber, title, content }) => requestJson('/api/chapters', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storyId, chapterNumber, title, content }),
 }));
@@ -28,7 +31,11 @@ const storiesSlice = createSlice({
     builder.addCase(fetchStories.pending, (state) => { state.status = 'loading'; state.error = null; })
       .addCase(fetchStories.fulfilled, (state, action) => { state.status = 'succeeded'; state.items = action.payload; })
       .addCase(fetchStories.rejected, (state, action) => { state.status = 'failed'; state.error = action.error.message; })
-      .addMatcher((action) => action.type.startsWith('stories/') && action.type.endsWith('/fulfilled') && action.type !== 'stories/fetch/fulfilled', (state) => { state.status = 'idle'; });
+    .addCase(updateStory.fulfilled, (state, action) => {
+      const story = state.items.find((item) => item.id === action.payload.id);
+      if (story) story.title = action.payload.title;
+    })
+    .addMatcher((action) => action.type.startsWith('stories/') && action.type.endsWith('/fulfilled') && action.type !== 'stories/fetch/fulfilled', (state) => { state.status = 'idle'; });
   },
 });
 

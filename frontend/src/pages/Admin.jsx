@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AudioLines, BookOpen, Home, Library, Menu, Plus, Sparkles } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
-import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter } from '../store';
+import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../store';
 import { Pagination } from '../shared/Pagination';
 import { toast } from '../shared/Toast';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
@@ -40,6 +41,12 @@ function PlusIcon() {
 export function Admin() {
   const dispatch = useDispatch();
   const stories = useSelector((state) => state.stories.items);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => window.matchMedia('(max-width: 860px)').matches,
+  );
+  const [adminPage, setAdminPage] = useState(
+    () => window.location.hash === '#admin-stories' ? 'stories' : 'overview',
+  );
   const [storyId, setStoryId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -63,6 +70,7 @@ export function Admin() {
   const chapterSelectionDrag = useRef(null);
   const selected = stories.find((s) => s.id === storyId);
   const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
+  const totalChapters = stories.reduce((count, story) => count + story.chapters.length, 0);
 
   useEffect(() => {
     const stopChapterSelection = () => {
@@ -75,6 +83,28 @@ export function Admin() {
       window.removeEventListener('pointercancel', stopChapterSelection);
     };
   }, []);
+
+  useEffect(() => {
+    const syncPageWithHash = () => {
+      setAdminPage(window.location.hash === '#admin-stories' ? 'stories' : 'overview');
+    };
+    window.addEventListener('hashchange', syncPageWithHash);
+    window.addEventListener('popstate', syncPageWithHash);
+    return () => {
+      window.removeEventListener('hashchange', syncPageWithHash);
+      window.removeEventListener('popstate', syncPageWithHash);
+    };
+  }, []);
+
+  const navigateAdminPage = (event, page) => {
+    event.preventDefault();
+    const hash = page === 'stories' ? '#admin-stories' : '#admin-overview';
+    if (window.location.hash !== hash) {
+      window.history.pushState(null, '', hash);
+    }
+    setAdminPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const now = new Date();
   const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
@@ -293,11 +323,11 @@ export function Admin() {
 
   const saveImportedChapters = async () => {
     if (!form.story.trim()) {
-      setStatus('Vui lòng điền tên truyện trước khi lưu chương.');
+      toast.error('Thiếu tên truyện', 'Vui lòng điền tên truyện trước khi lưu chương.');
       return;
     }
     if (mergedSourceCount && (!Number.isInteger(Number(form.number)) || Number(form.number) < 1 || !form.title.trim() || !form.content.trim())) {
-      setStatus('Hãy kiểm tra số chương, tiêu đề và nội dung của tập đã gộp trước khi lưu.');
+      toast.error('Thông tin tập chưa hợp lệ', 'Hãy kiểm tra số chương, tiêu đề và nội dung của tập đã gộp trước khi lưu.');
       return;
     }
 
@@ -313,6 +343,8 @@ export function Admin() {
       if (!id) {
         id = (await dispatch(createStory(form.story.trim())).unwrap()).id;
         setStoryId(id);
+      } else if (selected && form.story.trim() !== selected.title) {
+        await dispatch(updateStory({ id, title: form.story.trim() })).unwrap();
       }
 
       while (pendingChapters.length) {
@@ -365,11 +397,35 @@ export function Admin() {
       await saveImportedChapters();
       return;
     }
-    if (!form.story.trim() || !form.content.trim()) { setStatus('Vui lòng điền tên truyện và nội dung chương.'); return; }
+    const storyTitle = form.story.trim();
+    if (!storyTitle) {
+      toast.error('Thiếu tên truyện', 'Vui lòng điền tên truyện.');
+      return;
+    }
+    if (!form.content.trim()) {
+      if (storyId && selected && storyTitle !== selected.title && !editing) {
+        setStatus('Đang lưu tên truyện...');
+        try {
+          await dispatch(updateStory({ id: storyId, title: storyTitle })).unwrap();
+          setStatus('Đã cập nhật tên truyện.');
+          toast.success('Đã cập nhật tên truyện', storyTitle);
+        } catch (err) {
+          setStatus(err.message);
+          toast.error('Không thể cập nhật tên truyện', err.message);
+        }
+        return;
+      }
+      toast.error('Thiếu nội dung chương', 'Vui lòng điền nội dung chương.');
+      return;
+    }
     setStatus('Đang lưu...');
     try {
       let id = storyId;
-      if (!id) id = (await dispatch(createStory(form.story.trim())).unwrap()).id;
+      if (!id) {
+        id = (await dispatch(createStory(storyTitle)).unwrap()).id;
+      } else if (selected && storyTitle !== selected.title) {
+        await dispatch(updateStory({ id, title: storyTitle })).unwrap();
+      }
       if (editing) {
         await dispatch(updateChapter({ id: editing.id, chapterNumber: Number(form.number), title: form.title.trim(), content: form.content.trim() })).unwrap();
       } else {
@@ -521,74 +577,157 @@ export function Admin() {
         : null;
 
   return (
-    <>
-      <nav className="navbar">
-        <div className="navbar-inner">
-          <div className="brand">
-            <div className="brand-icon"><HeadphonesIcon /></div>
-            <div className="brand-text">
-              <span className="brand-name">Audio Story Reader</span>
-              <span className="brand-page">Quản trị</span>
-            </div>
-          </div>
+    <div className={`admin-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
+      <aside className="admin-sidebar" id="admin-sidebar">
+        <Link to="/" className="admin-sidebar-brand">
+          <span className="admin-sidebar-brand-icon"><HeadphonesIcon /></span>
+          <span>
+            <strong>Audio Story</strong>
+            <small>STUDIO</small>
+          </span>
+        </Link>
+
+        <div className="admin-sidebar-label">WORKSPACE</div>
+        <nav className="admin-sidebar-nav" aria-label="Điều hướng quản trị">
+          <a
+            className={`admin-nav-item${adminPage === 'overview' ? ' active' : ''}`}
+            href="#admin-overview"
+            onClick={(event) => navigateAdminPage(event, 'overview')}
+          >
+            <Home size={17} />
+            <span>Tổng quan</span>
+          </a>
+          <a
+            className={`admin-nav-item${adminPage === 'stories' ? ' active' : ''}`}
+            href="#admin-stories"
+            onClick={(event) => navigateAdminPage(event, 'stories')}
+          >
+            <Library size={17} />
+            <span>Thư viện truyện</span>
+          </a>
+        </nav>
+
+        <div className="admin-sidebar-label admin-sidebar-label-bottom">KHÁM PHÁ</div>
+        <nav className="admin-sidebar-nav" aria-label="Liên kết khác">
+          <Link className="admin-nav-item" to="/">
+            <AudioLines size={17} />
+            <span>Trang nghe truyện</span>
+          </Link>
+        </nav>
+
+        <div className="admin-sidebar-footer">
+          <Sparkles size={16} />
+          <span>Quản lý nội dung<br /><strong>Audio Story Reader</strong></span>
         </div>
-      </nav>
+      </aside>
 
-      <main>
-        <div className="container">
-          {/* Hero */}
-          <div className="page-hero">
-            <div>
-              <h1 className="hero-title">Thư viện Truyện</h1>
-              <p className="hero-sub">Quản lý các đầu truyện và chương âm thanh trong hệ thống thư viện.</p>
-            </div>
-            <Link to="/" className="btn btn-outline">Trang chủ</Link>
-          </div>
-
-          {/* Stories table */}
-          <div className="section-card">
-            <div className="section-head">
-              <div>
-                <div className="section-title">Truyện trong hệ thống</div>
-                <div className="section-sub">{stories.length} đầu truyện</div>
-              </div>
-              <button className="btn btn-dark" onClick={openNew}>
-                Tạo Truyện
+      <div className="admin-main">
+        <nav className="navbar">
+          <div className="navbar-inner">
+            <div className="admin-header-leading">
+              <button
+                type="button"
+                className="admin-sidebar-toggle"
+                aria-label={sidebarCollapsed ? 'Mở menu bên trái' : 'Thu gọn menu bên trái'}
+                aria-controls="admin-sidebar"
+                aria-expanded={!sidebarCollapsed}
+                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              >
+                <Menu size={19} />
               </button>
             </div>
+          </div>
+        </nav>
 
-            <div className="adm-tbl">
-              <div className="dt-head">
-                <span>#</span>
-                <span>Tên truyện</span>
-                <span>Số chương</span>
-                <span style={{ textAlign: 'right' }}>Thao tác</span>
+      <main className="admin-content">
+        <div className="container">
+          {adminPage === 'overview' ? (
+            <>
+              <div className="page-hero" id="admin-overview">
+                <div>
+                  <div className="admin-eyebrow">TỔNG QUAN</div>
+                  <h1 className="hero-title">Xin chào, quản trị viên</h1>
+                  <p className="hero-sub">Theo dõi và quản lý thư viện truyện âm thanh của bạn.</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="page-hero" id="admin-stories">
+                <div>
+                  <div className="admin-eyebrow">THƯ VIỆN</div>
+                  <h1 className="hero-title">Thư viện truyện</h1>
+                  <p className="hero-sub">Quản lý danh sách {stories.length} đầu truyện và nội dung trong hệ thống.</p>
+                </div>
+                <button className="btn btn-dark" onClick={openNew}>
+                  <Plus size={16} /> Tạo truyện
+                </button>
               </div>
 
-              {visibleStories.map((story, i) => (
-                <div key={story.id} className="dt-row" onClick={() => open(story)}>
-                  <span className="row-num">{String((page - 1) * pageSize + i + 1).padStart(2, '0')}</span>
-                  <span className="row-title">{story.title}</span>
-                  <span className="row-meta">{story.chapters.length} chương</span>
-                  <span className="row-action">
-                    <button
-                      className="btn-open"
-                      onClick={(e) => { e.stopPropagation(); requestDelete('story', story.id); }}
-                    >
-                      Xóa
-                    </button>
-                  </span>
+              <div className="admin-stats">
+                <div className="admin-stat-card">
+                  <span className="admin-stat-icon is-blue"><Library size={18} /></span>
+                  <span className="admin-stat-label">Tổng số truyện</span>
+                  <strong>{stories.length}</strong>
+                  <small>tác phẩm trong thư viện</small>
                 </div>
-              ))}
-            </div>
-            <Pagination
-              total={stories.length}
-              page={page}
-              pageSize={pageSize}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-            />
-          </div>
+                <div className="admin-stat-card">
+                  <span className="admin-stat-icon is-violet"><BookOpen size={18} /></span>
+                  <span className="admin-stat-label">Tổng số chương</span>
+                  <strong>{totalChapters}</strong>
+                  <small>chương đã được thêm</small>
+                </div>
+                <div className="admin-stat-card">
+                  <span className="admin-stat-icon is-green"><AudioLines size={18} /></span>
+                  <span className="admin-stat-label">Trung bình</span>
+                  <strong>{stories.length ? (totalChapters / stories.length).toFixed(1) : '0'}</strong>
+                  <small>chương trên mỗi truyện</small>
+                </div>
+              </div>
+
+              {/* Stories table */}
+              <div className="section-card">
+                <div className="section-head">
+                  <div>
+                    <div className="section-title">Danh sách truyện</div>
+                    <div className="section-sub">{stories.length} đầu truyện</div>
+                  </div>
+                </div>
+
+                <div className="adm-tbl">
+                  <div className="dt-head">
+                    <span>#</span>
+                    <span>Tên truyện</span>
+                    <span>Số chương</span>
+                    <span style={{ textAlign: 'right' }}>Thao tác</span>
+                  </div>
+
+                  {visibleStories.map((story, i) => (
+                    <div key={story.id} className="dt-row" onClick={() => open(story)}>
+                      <span className="row-num">{String((page - 1) * pageSize + i + 1).padStart(2, '0')}</span>
+                      <span className="row-title">{story.title}</span>
+                      <span className="row-meta">{story.chapters.length} chương</span>
+                      <span className="row-action">
+                        <button
+                          className="btn-open"
+                          onClick={(e) => { e.stopPropagation(); requestDelete('story', story.id); }}
+                        >
+                          Xóa
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Pagination
+                  total={stories.length}
+                  page={page}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+                />
+              </div>
+            </>
+          )}
 
           {/* Form panel */}
           {formOpen && (
@@ -603,7 +742,7 @@ export function Admin() {
             >
               <div className={`form-panel${selected ? '' : ' form-panel-single'}`} onMouseDown={(event) => event.stopPropagation()}>
                 <div className="form-panel-title">
-                  {editing ? `Sửa chương: ${selected?.title}` : storyId ? `Thêm chương: ${selected?.title}` : 'Tạo truyện mới'}
+                  {editing ? 'Sửa chương' : storyId ? 'Thêm chương' : 'Tạo truyện mới'}
                 </div>
 
                 <div className={`form-modal-grid${selected ? '' : ' form-modal-grid-single'}`}>
@@ -674,17 +813,16 @@ export function Admin() {
                         </button>
                       </div>
                     )}
-                    {!storyId && (
-                      <div className="form-group">
-                        <label className="form-label">Tên truyện</label>
-                        <input
-                          className="form-input"
-                          value={form.story}
-                          onChange={(e) => setForm({ ...form, story: e.target.value })}
-                          placeholder="Nhập tên truyện..."
-                        />
-                      </div>
-                    )}
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="chapter-story-title">Tên truyện</label>
+                      <input
+                        id="chapter-story-title"
+                        className="form-input"
+                        value={form.story}
+                        onChange={(e) => setForm({ ...form, story: e.target.value })}
+                        placeholder="Nhập hoặc sửa tên truyện..."
+                      />
+                    </div>
                     <div className="chapter-number-title-grid">
                       <div className="form-group">
                     <label className="form-label">Số chương</label>
@@ -728,7 +866,7 @@ export function Admin() {
                           : 'Lưu'}
                   </button>
                     <button className="btn btn-outline" onClick={editing ? cancelEdit : closeForm} disabled={importing || savingImportedChapters}>{editing ? 'Hủy' : 'Đóng'}</button>
-                  <span className="form-msg">{status}</span>
+                  <span className="admin-sr-only" role="status" aria-live="polite">{status}</span>
                     </div>
                 </div>
 
@@ -810,6 +948,7 @@ export function Admin() {
           }}
         />
       )}
-    </>
+      </div>
+    </div>
   );
 }
