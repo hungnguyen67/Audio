@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Maximize2 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Pagination } from '../shared/Pagination';
@@ -25,8 +26,11 @@ function BookIcon() {
   );
 }
 
-export function Story() {
-  const { storyId } = useParams();
+export function Story({ storyId: storyIdProp, active = true }) {
+  const routeParams = useParams();
+  const routeStoryId = storyIdProp || routeParams.storyId;
+  const [retainedStoryId, setRetainedStoryId] = useState(routeStoryId || null);
+  const storyId = routeStoryId || retainedStoryId;
   const story = useSelector((state) => state.stories.items.find((s) => s.id === storyId));
   const audioRef = useRef(null);
   const timerRef = useRef(null);
@@ -51,29 +55,39 @@ export function Story() {
   const [chapterPage, setChapterPage] = useState(1);
   const [chapterPageSize, setChapterPageSize] = useState(5);
   const [status, setStatus] = useState('Vui lòng chọn một chương để bắt đầu nghe');
+  const currentChapter = story?.chapters.find((chapter) => chapter.id === currentChapterRef.current);
+  const playerChapter = selected || currentChapter;
   playbackSettingsRef.current = { voice, speed, volume };
   const visibleChapters = story
     ? story.chapters.slice((chapterPage - 1) * chapterPageSize, chapterPage * chapterPageSize)
     : [];
 
   useEffect(() => {
+    if (routeStoryId) setRetainedStoryId(routeStoryId);
+  }, [routeStoryId]);
+
+  useEffect(() => {
+    if (!storyId) return;
     setSelected(null);
     setLastListenedChapter(null);
     setChapterPage(1);
-    if (!storyId) return;
+    let active = true;
     requestJson(`/api/story-progress/${storyId}`)
       .then((progress) => {
+        if (!active) return;
         if (progress.chapterNumber) {
           setLastListenedChapter(progress.chapterNumber);
-          const chapterIndex = story?.chapters.findIndex((chapter) => chapter.id === progress.chapterId);
-          const page = chapterIndex >= 0
-            ? Math.floor(chapterIndex / chapterPageSize) + 1
-            : 1;
-          setChapterPage(page);
         }
       })
       .catch(() => {});
-  }, [storyId, story, chapterPageSize]);
+    return () => { active = false; };
+  }, [storyId]);
+
+  useEffect(() => {
+    if (!story || !lastListenedChapter) return;
+    const chapterIndex = story.chapters.findIndex((chapter) => chapter.number === lastListenedChapter);
+    if (chapterIndex >= 0) setChapterPage(Math.floor(chapterIndex / chapterPageSize) + 1);
+  }, [story, lastListenedChapter, chapterPageSize]);
 
   useEffect(() => {
     const persistOnExit = () => {
@@ -327,9 +341,11 @@ export function Story() {
     timerRef.current = window.setTimeout(() => selectChapter(next), 700);
   };
 
+  if (!story && !active) return null;
+
   if (!story) {
     return (
-      <>
+      <div className="story-screen">
         <nav className="navbar">
           <div className="navbar-inner">
             <div className="brand">
@@ -345,12 +361,12 @@ export function Story() {
         <div className="container" style={{ padding: '48px 24px', color: '#64748b', textAlign: 'center' }}>
           Không tìm thấy truyện. <Link to="/" style={{ color: '#2563eb' }}>Quay lại thư viện</Link>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className={`story-screen${active ? '' : ' is-minimized'}`}>
       <nav className="navbar">
         <div className="navbar-inner">
           <div className="brand">
@@ -422,8 +438,16 @@ export function Story() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="player-card">
                 <div className="player-label">Đang phát</div>
+                <Link
+                  to={`/story/${storyId}`}
+                  className="mini-player-open"
+                  aria-label="Mở trình phát đầy đủ"
+                  title="Mở trình phát"
+                >
+                  <Maximize2 size={17} strokeWidth={2} aria-hidden="true" />
+                </Link>
                 <div className="player-title">
-                  {selected ? selected.title : 'Chưa chọn chương'}
+                  {playerChapter?.title || 'Chưa chọn chương'}
                 </div>
                 <div className="player-status">{status}</div>
 
@@ -521,6 +545,6 @@ export function Story() {
           </div>
         </div>
       </main>
-    </>
+    </div>
   );
 }

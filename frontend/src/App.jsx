@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { fetchStories, receiveStories, store } from './store';
 import { requestJson } from './shared/api';
@@ -25,7 +25,10 @@ function getNewContent(currentStories, refreshedStories) {
 
 export function App() {
   const dispatch = useDispatch();
+  const location = useLocation();
   const hasShownRefreshError = useRef(false);
+  const storyMatch = location.pathname.match(/^\/story\/([^/]+)\/?$/);
+  const storyId = storyMatch ? decodeURIComponent(storyMatch[1]) : undefined;
 
   useEffect(() => {
     let active = true;
@@ -94,10 +97,13 @@ export function App() {
     };
   }, [dispatch]);
 
-  return <Routes>
-    <Route path="/" element={<Library />} />
-    <Route path="/story/:storyId" element={<Story />} />
-    <Route path="/admin" element={<Admin />} />
-    <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes>;
+  return <>
+    <Routes>
+      <Route path="/" element={<Library />} />
+      <Route path="/story/:storyId" element={null} />
+      <Route path="/admin" element={<Admin />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+    <Story storyId={storyId} active={Boolean(storyId)} />
+  </>;
 }

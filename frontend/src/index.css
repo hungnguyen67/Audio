@@ -654,6 +654,10 @@ body {
   min-height: 18px;
 }
 
+.mini-player-open {
+  display: none;
+}
+
 .ctrl-row {
   display: flex;
   gap: 10px;
@@ -833,6 +837,94 @@ body {
 audio {
   width: 100%;
   height: 32px;
+}
+
+.story-screen.is-minimized > .navbar,
+.story-screen.is-minimized .page-hero,
+.story-screen.is-minimized .story-wrap > .section-card,
+.story-screen.is-minimized .player-label,
+.story-screen.is-minimized .player-status,
+.story-screen.is-minimized .ctrl-row,
+.story-screen.is-minimized .auto-label,
+.story-screen.is-minimized .volume-control,
+.story-screen.is-minimized .tips-card {
+  display: none;
+}
+
+.story-screen.is-minimized main {
+  position: fixed;
+  z-index: 180;
+  right: 20px;
+  bottom: 20px;
+  left: auto;
+  width: min(390px, calc(100vw - 40px));
+  padding: 0;
+  pointer-events: none;
+}
+
+.story-screen.is-minimized main .container {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.story-screen.is-minimized .story-wrap {
+  display: block;
+}
+
+.story-screen.is-minimized .story-wrap > :last-child {
+  display: block;
+}
+
+.story-screen.is-minimized .player-card {
+  position: relative;
+  top: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px 12px;
+  padding: 14px 16px 12px;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.2);
+  pointer-events: auto;
+}
+
+.story-screen.is-minimized .player-title {
+  overflow: hidden;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-screen.is-minimized .mini-player-open {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--link);
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.story-screen.is-minimized .mini-player-open:hover {
+  background: var(--surface-2);
+}
+
+.story-screen.is-minimized audio {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+@media (max-width: 520px) {
+  .story-screen.is-minimized main {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
 }
 
 .volume-control {
