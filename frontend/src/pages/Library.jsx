@@ -37,6 +37,7 @@ export function Library() {
               <span className="brand-page">Thư viện</span>
             </div>
           </div>
+          <Link to="/admin#admin-stories" className="btn btn-outline">Thư viện truyện</Link>
         </div>
       </nav>
 
@@ -50,7 +51,6 @@ export function Library() {
               <h1 className="hero-title">Thư Viện Truyện</h1>
               <p className="hero-sub">Khám phá kho tàng truyện nói và các chương âm thanh trong hệ thống.</p>
             </div>
-            <Link to="/admin" className="btn btn-outline">Chế độ Admin</Link>
           </div>
 
           {/* Stories section */}
@@ -75,9 +75,8 @@ export function Library() {
             <div className="lib-tbl">
               <div className="dt-head">
                 <span>#</span>
-                <span>Tiêu đề</span>
+                <span>Truyện mới cập nhật</span>
                 <span>Số chương</span>
-                <span style={{ textAlign: 'right' }}>Hành động</span>
               </div>
 
               {visibleStories.map((story, i) => (
@@ -90,14 +89,6 @@ export function Library() {
                     )}
                   </div>
                   <span className="row-meta">{story.chapters.length} chương</span>
-                  <span style={{ textAlign: 'right' }}>
-                    <button
-                      className="btn-open"
-                      onClick={(e) => { e.stopPropagation(); navigate(`/story/${story.id}`); }}
-                    >
-                      Mở nghe
-                    </button>
-                  </span>
                 </div>
               ))}
             </div>

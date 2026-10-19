@@ -611,7 +611,7 @@ export function Admin() {
         <nav className="admin-sidebar-nav" aria-label="Liên kết khác">
           <Link className="admin-nav-item" to="/">
             <AudioLines size={17} />
-            <span>Trang nghe truyện</span>
+            <span>Thư viện truyện</span>
           </Link>
         </nav>
 

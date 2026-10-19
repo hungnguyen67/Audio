@@ -321,10 +321,16 @@ body {
   font-weight: 700;
 }
 
-/* Library: # | title | chapters | action */
+/* Library: # | title | chapters */
 .lib-tbl .dt-head,
 .lib-tbl .dt-row {
-  grid-template-columns: 32px minmax(0, 1fr) 100px 110px;
+  grid-template-columns: 32px minmax(0, 1fr) 120px;
+}
+
+.lib-tbl .dt-head > :last-child,
+.lib-tbl .dt-row > :last-child {
+  padding-right: 8px;
+  text-align: right;
 }
 
 /* Admin: # | title | chapters | status | action */
@@ -1314,9 +1320,11 @@ audio {
 }
 
 .ch-sub-items {
-  max-height: min(420px, 55vh);
+  max-height: min(620px, 70vh);
+  padding-right: 10px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .form-panel {
