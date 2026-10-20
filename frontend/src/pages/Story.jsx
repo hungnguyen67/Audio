@@ -18,14 +18,6 @@ function HeadphonesIcon() {
   );
 }
 
-function BookIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-    </svg>
-  );
-}
-
 export function Story({ storyId: storyIdProp, active = true }) {
   const location = useLocation();
   const routeParams = useParams();
@@ -407,11 +399,7 @@ export function Story({ storyId: storyIdProp, active = true }) {
           {/* Story header */}
           <div className="page-hero">
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, color: '#94a3b8' }}>
-                <BookIcon />
-                <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Audio Story Reader</span>
-              </div>
-              <h1 style={{ fontSize: 'clamp(1.6rem, 3vw, 2rem)', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 5 }}>
+              <h1 style={{ fontSize: 'clamp(1.2rem, 2vw, 1.45rem)', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 5 }}>
                 {story.title}
               </h1>
               {lastListenedChapter ? (
