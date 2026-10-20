@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Minus } from 'lucide-react';
-import { Link, useParams } from 'react-router-dom';
+import { Library, Minus } from 'lucide-react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Pagination } from '../shared/Pagination';
 import { Select } from '../shared/Select';
@@ -27,7 +27,9 @@ function BookIcon() {
 }
 
 export function Story({ storyId: storyIdProp, active = true }) {
+  const location = useLocation();
   const routeParams = useParams();
+  const isAdminStoriesPage = location.pathname === '/admin' && location.hash === '#admin-stories';
   const routeStoryId = storyIdProp || routeParams.storyId;
   const [retainedStoryId, setRetainedStoryId] = useState(routeStoryId || null);
   const storyId = routeStoryId || retainedStoryId;
@@ -568,6 +570,12 @@ export function Story({ storyId: storyIdProp, active = true }) {
                   <span>{Math.round(volume * 100)}%</span>
                 </label>
               </div>
+              {!isAdminStoriesPage && (
+                <Link to="/admin#admin-stories" className="mini-player-library">
+                  <Library size={17} strokeWidth={2} aria-hidden="true" />
+                  <span>Thư viện truyện</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>

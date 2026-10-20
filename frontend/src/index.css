@@ -891,7 +891,7 @@ audio {
   gap: 9px 12px;
   padding: 14px 16px 12px;
   border-radius: 12px;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1);
   pointer-events: auto;
 }
 
@@ -940,12 +940,52 @@ audio {
   color: var(--link);
 }
 
+.mini-player-library {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 181;
+  display: flex;
+  align-self: flex-end;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  color: var(--text-2);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.07);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  pointer-events: auto;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.story-screen.is-minimized .mini-player-library {
+  position: static;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
+}
+
+.mini-player-library:hover {
+  color: var(--link);
+}
+
 .story-screen.is-minimized audio {
   grid-column: 1 / -1;
   grid-row: 2;
 }
 
 @media (max-width: 520px) {
+  .mini-player-library {
+    right: 12px;
+    bottom: 12px;
+  }
+
   .story-screen.is-minimized main {
     right: 12px;
     bottom: 12px;
