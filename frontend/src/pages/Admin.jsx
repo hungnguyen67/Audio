@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AudioLines, BookOpen, Home, Library, Menu, Plus, Sparkles, Upload } from 'lucide-react';
+import { AudioLines, Home, Library, Menu, Plus, Sparkles, Upload } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../store';
 import { Pagination } from '../shared/Pagination';
@@ -71,7 +71,6 @@ export function Admin() {
   const chapterSelectionDrag = useRef(null);
   const selected = stories.find((s) => s.id === storyId);
   const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
-  const totalChapters = stories.reduce((count, story) => count + story.chapters.length, 0);
   const contentWordCount = form.content.trim() ? form.content.trim().split(/\s+/u).length : 0;
 
   useEffect(() => {
@@ -684,27 +683,6 @@ export function Admin() {
                 <button className="btn btn-dark" onClick={openNew}>
                   <Plus size={16} /> Tạo truyện
                 </button>
-              </div>
-
-              <div className="admin-stats">
-                <div className="admin-stat-card">
-                  <span className="admin-stat-icon is-blue"><Library size={18} /></span>
-                  <span className="admin-stat-label">Tổng số truyện</span>
-                  <strong>{stories.length}</strong>
-                  <small>tác phẩm trong thư viện</small>
-                </div>
-                <div className="admin-stat-card">
-                  <span className="admin-stat-icon is-violet"><BookOpen size={18} /></span>
-                  <span className="admin-stat-label">Tổng số chương</span>
-                  <strong>{totalChapters}</strong>
-                  <small>chương đã được thêm</small>
-                </div>
-                <div className="admin-stat-card">
-                  <span className="admin-stat-icon is-green"><AudioLines size={18} /></span>
-                  <span className="admin-stat-label">Trung bình</span>
-                  <strong>{stories.length ? (totalChapters / stories.length).toFixed(1) : '0'}</strong>
-                  <small>chương trên mỗi truyện</small>
-                </div>
               </div>
 
               {/* Stories table */}

@@ -43,15 +43,7 @@ export function Library() {
 
       {/* ── Main ───────────────────────────── */}
       <main>
-        <div className="container">
-
-          {/* Hero */}
-          <div className="page-hero">
-            <div>
-              <h1 className="hero-title">Thư Viện Truyện</h1>
-              <p className="hero-sub">Khám phá kho tàng truyện nói và các chương âm thanh trong hệ thống.</p>
-            </div>
-          </div>
+        <div className="container library-container">
 
           {/* Stories section */}
           <div className="section-card">
