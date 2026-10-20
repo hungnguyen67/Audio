@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStories } from '../store';
 import { Pagination } from '../shared/Pagination';
@@ -37,7 +37,6 @@ export function Library() {
               <span className="brand-page">Thư viện</span>
             </div>
           </div>
-          <Link to="/admin#admin-stories" className="btn btn-outline">Thư viện truyện</Link>
         </div>
       </nav>
 
