@@ -635,11 +635,6 @@ export function Admin() {
             <span>Thư viện truyện</span>
           </Link>
         </nav>
-
-        <div className="admin-sidebar-footer">
-          <Sparkles size={16} />
-          <span>Quản lý nội dung<br /><strong>Audio Story Reader</strong></span>
-        </div>
       </aside>
 
       <div className="admin-main">
