@@ -348,6 +348,12 @@ export function Story({ storyId: storyIdProp, active = true }) {
     timerRef.current = window.setTimeout(() => selectChapter(next), 700);
   };
 
+  const seekBy = (seconds) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    audio.currentTime = Math.min(audio.duration, Math.max(0, audio.currentTime + seconds));
+  };
+
   const dismissMiniPlayer = () => {
     playbackRequestRef.current += 1;
     window.clearTimeout(timerRef.current);
@@ -509,16 +515,6 @@ export function Story({ storyId: storyIdProp, active = true }) {
                   </div>
                 </div>
 
-                <label className="auto-label">
-                  <input
-                    type="checkbox"
-                    checked={autoNext}
-                    onChange={(e) => { setAutoNext(e.target.checked); localStorage.setItem('audio-auto-next', e.target.checked); }}
-                  />
-                  <span className="check-box" aria-hidden="true" />
-                  Tự động phát chương tiếp theo
-                </label>
-
                 <audio
                   ref={audioRef}
                   controls
@@ -552,23 +548,21 @@ export function Story({ storyId: storyIdProp, active = true }) {
                     }
                   }}
                 />
-                <label className="volume-control">
-                  <span>Âm lượng</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={volume}
-                    onChange={(event) => {
-                      const nextVolume = Number(event.target.value);
-                      setVolume(nextVolume);
-                      localStorage.setItem('audio-volume', String(nextVolume));
-                      savePlaybackSettings(currentChapterRef.current, { volume: nextVolume });
-                    }}
-                  />
-                  <span>{Math.round(volume * 100)}%</span>
-                </label>
+                <div className="audio-actions-row">
+                  <label className="auto-label">
+                    <input
+                      type="checkbox"
+                      checked={autoNext}
+                      onChange={(e) => { setAutoNext(e.target.checked); localStorage.setItem('audio-auto-next', e.target.checked); }}
+                    />
+                    <span className="check-box" aria-hidden="true" />
+                    <span className="auto-label-text">Tự động phát chương</span>
+                  </label>
+                  <div className="audio-seek-controls" aria-label="Điều khiển tua audio">
+                    <button type="button" onClick={() => seekBy(-10)} aria-label="Lùi 10 giây" title="Lùi 10 giây">−10s</button>
+                    <button type="button" onClick={() => seekBy(10)} aria-label="Tiến 10 giây" title="Tiến 10 giây">+10s</button>
+                  </div>
+                </div>
               </div>
               {!isAdminStoriesPage && (
                 <Link to="/admin#admin-stories" className="mini-player-library">

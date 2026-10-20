@@ -845,6 +845,55 @@ audio {
   height: 32px;
 }
 
+.audio-actions-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.audio-actions-row .auto-label {
+  min-width: 0;
+  gap: 8px;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.audio-actions-row .auto-label-text {
+  min-width: 0;
+}
+
+.audio-seek-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.audio-seek-controls button {
+  min-width: 52px;
+  padding: 5px 8px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.audio-seek-controls button:hover {
+  color: var(--link);
+  border-color: #93c5fd;
+}
+
+.audio-seek-controls button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
 .story-screen.is-minimized > .navbar,
 .story-screen.is-minimized .page-hero,
 .story-screen.is-minimized .story-wrap > .section-card,
@@ -852,7 +901,6 @@ audio {
 .story-screen.is-minimized .player-status,
 .story-screen.is-minimized .ctrl-row,
 .story-screen.is-minimized .auto-label,
-.story-screen.is-minimized .volume-control,
 .story-screen.is-minimized .tips-card {
   display: none;
 }
@@ -980,6 +1028,11 @@ audio {
   grid-row: 2;
 }
 
+.story-screen.is-minimized .audio-actions-row {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
 @media (max-width: 520px) {
   .mini-player-library {
     right: 12px;
@@ -991,29 +1044,6 @@ audio {
     bottom: 12px;
     width: calc(100vw - 24px);
   }
-}
-
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.volume-control input[type='range'] {
-  flex: 1;
-  min-width: 0;
-  height: 4px;
-  accent-color: var(--link);
-  cursor: pointer;
-}
-
-.volume-control > span:last-child {
-  min-width: 32px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 .tips-card {
