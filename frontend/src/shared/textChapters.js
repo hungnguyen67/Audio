@@ -35,3 +35,36 @@ export function splitTextIntoChapters(text) {
     };
   }).filter((chapter) => chapter.content);
 }
+
+export function groupChapters(chapters, chaptersPerEpisode) {
+  if (!Number.isInteger(chaptersPerEpisode) || chaptersPerEpisode < 1) {
+    throw new RangeError('Số chương gộp mỗi tập phải là số nguyên lớn hơn 0.');
+  }
+
+  const groups = [];
+  const firstEpisodeNumber = chapters[0]?.chapterNumber || 1;
+  for (let start = 0; start < chapters.length; start += chaptersPerEpisode) {
+    const group = chapters.slice(start, start + chaptersPerEpisode);
+    const firstChapter = group[0];
+    const titles = group.map((chapter) => chapter.title || `Chương ${chapter.chapterNumber}`);
+    const combinedTitle = group.length === 1
+      ? titles[0]
+      : `${titles[0]} - ${titles[titles.length - 1]}`;
+    const title = combinedTitle.length > 160
+      ? `${combinedTitle.slice(0, 157)}...`
+      : combinedTitle;
+
+    groups.push({
+      chapterNumber: firstEpisodeNumber + groups.length,
+      title,
+      content: group.length === 1
+        ? firstChapter.content
+        : group.map((chapter, index) => {
+          const chapterTitle = titles[index];
+          return `Chương ${chapter.chapterNumber}: ${chapterTitle}\n\n${chapter.content}`;
+        }).join('\n\n'),
+    });
+  }
+
+  return groups;
+}

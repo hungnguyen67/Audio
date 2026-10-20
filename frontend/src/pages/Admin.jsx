@@ -7,7 +7,7 @@ import { Pagination } from '../shared/Pagination';
 import { toast } from '../shared/Toast';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { requestJson } from '../shared/api';
-import { splitTextIntoChapters } from '../shared/textChapters';
+import { groupChapters, splitTextIntoChapters } from '../shared/textChapters';
 
 function isDuplicateChapterNumberError(error) {
   return /duplicate entry .* for key ['`]?chapters\.unique_story_chapter/i.test(error?.message || '');
@@ -58,6 +58,7 @@ export function Admin() {
   const [importStatus, setImportStatus] = useState('');
   const [importFromChapter, setImportFromChapter] = useState('1');
   const [importToChapter, setImportToChapter] = useState('1');
+  const [textChaptersPerEpisode, setTextChaptersPerEpisode] = useState('1');
   const [importedChapters, setImportedChapters] = useState([]);
   const [mergedSourceCount, setMergedSourceCount] = useState(0);
   const [savingImportedChapters, setSavingImportedChapters] = useState(false);
@@ -71,6 +72,7 @@ export function Admin() {
   const selected = stories.find((s) => s.id === storyId);
   const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
   const totalChapters = stories.reduce((count, story) => count + story.chapters.length, 0);
+  const contentWordCount = form.content.trim() ? form.content.trim().split(/\s+/u).length : 0;
 
   useEffect(() => {
     const stopChapterSelection = () => {
@@ -291,6 +293,11 @@ export function Admin() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    const chaptersPerEpisode = Number(textChaptersPerEpisode);
+    if (!Number.isSafeInteger(chaptersPerEpisode) || chaptersPerEpisode < 1) {
+      setImportStatus('Số chương gộp mỗi tập phải là số nguyên lớn hơn 0.');
+      return;
+    }
     if (form.content.trim() || importedChapters.length) {
       if (!window.confirm('Nhập tệp TXT sẽ thay thế nội dung hoặc danh sách chương đang chờ. Tiếp tục?')) return;
     }
@@ -305,15 +312,20 @@ export function Admin() {
         setImportStatus('Không tìm thấy tiêu đề chương. Hãy dùng các dòng như "Chương 1: Tên chương" hoặc "Thứ 0001 chương Tên chương" trong tệp TXT.');
         return;
       }
-      setImportedChapters(chapters);
+      const episodes = groupChapters(chapters, chaptersPerEpisode);
+      const sourceCount = chaptersPerEpisode > 1 ? chapters.length : 0;
+      setImportedChapters(episodes);
+      setMergedSourceCount(sourceCount);
       setForm((previous) => ({
         ...previous,
         story: previous.story.trim() ? previous.story : file.name.replace(/\.txt$/i, ''),
-        number: String(chapters[0].chapterNumber),
-        title: chapters[0].title,
+        number: String(episodes[0].chapterNumber),
+        title: episodes[0].title,
         content: '',
       }));
-      setImportStatus(`Đã tách ${chapters.length} chương từ tệp TXT. Kiểm tra danh sách rồi bấm Lưu.`);
+      setImportStatus(chaptersPerEpisode === 1
+        ? `Đã tách ${chapters.length} chương từ tệp TXT. Kiểm tra danh sách rồi bấm Lưu.`
+        : `Đã tách ${chapters.length} chương nguồn thành ${episodes.length} tập, gộp tối đa ${chaptersPerEpisode} chương/tập. Kiểm tra danh sách rồi bấm Lưu.`);
     } catch (error) {
       setImportStatus(`Không thể đọc tệp TXT: ${error.message}`);
     } finally {
@@ -326,8 +338,18 @@ export function Admin() {
       toast.error('Thiếu tên truyện', 'Vui lòng điền tên truyện trước khi lưu chương.');
       return;
     }
-    if (mergedSourceCount && (!Number.isInteger(Number(form.number)) || Number(form.number) < 1 || !form.title.trim() || !form.content.trim())) {
+    const usesMergedEpisodeForm = mergedSourceCount && importedChapters.length === 1;
+    if (usesMergedEpisodeForm && (!Number.isInteger(Number(form.number)) || Number(form.number) < 1 || !form.title.trim() || !form.content.trim())) {
       toast.error('Thông tin tập chưa hợp lệ', 'Hãy kiểm tra số chương, tiêu đề và nội dung của tập đã gộp trước khi lưu.');
+      return;
+    }
+    if (importedChapters.some((chapter) => (
+      !Number.isInteger(chapter.chapterNumber) ||
+      chapter.chapterNumber < 1 ||
+      !(usesMergedEpisodeForm ? form.title.trim() : chapter.title.trim()) ||
+      !(usesMergedEpisodeForm ? form.content.trim() : chapter.content.trim())
+    ))) {
+      toast.error('Dữ liệu chương chưa hợp lệ', 'Một hoặc nhiều chương đang chờ thiếu số tập, tiêu đề hoặc nội dung.');
       return;
     }
 
@@ -349,7 +371,7 @@ export function Admin() {
 
       while (pendingChapters.length) {
         const chapter = pendingChapters[0];
-        const chapterNumber = mergedSourceCount ? Number(form.number) : chapter.chapterNumber;
+        const chapterNumber = usesMergedEpisodeForm ? Number(form.number) : chapter.chapterNumber;
         const chapterLabel = mergedSourceCount ? 'tập' : 'chương';
         if (existingChapterNumbers.has(chapterNumber)) {
           skippedCount += 1;
@@ -360,8 +382,8 @@ export function Admin() {
             await dispatch(saveChapter({
               storyId: id,
               chapterNumber,
-              title: mergedSourceCount ? form.title.trim() : chapter.title || `Chương ${chapterNumber}`,
-              content: mergedSourceCount ? form.content.trim() : chapter.content,
+              title: usesMergedEpisodeForm ? form.title.trim() : chapter.title || `Chương ${chapterNumber}`,
+              content: usesMergedEpisodeForm ? form.content.trim() : chapter.content,
             })).unwrap();
             savedCount += 1;
           } catch (error) {
@@ -761,7 +783,7 @@ export function Admin() {
                                 setImportUrl(event.target.value);
                                 localStorage.setItem('audio-story:lastChapterImportUrl', event.target.value);
                               }}
-                              placeholder="Dán link chương từ metruyenchu.co hoặc truyen-h.com"
+                              placeholder="Dán link chương tại đây"
                               disabled={importing || savingImportedChapters}
                             />
                           </div>
@@ -793,7 +815,6 @@ export function Admin() {
                             {importing ? 'Đang lấy...' : 'Lấy chương'}
                           </button>
                         </div>
-                        {importStatus && <div className="form-msg" aria-live="polite">{importStatus}</div>}
                         <input
                           ref={textFileInput}
                           type="file"
@@ -803,7 +824,19 @@ export function Admin() {
                           disabled={importing || savingImportedChapters}
                         />
                         <div className="admin-import-txt-section">
-                          <label className="form-label">Tách chương từ tệp TXT</label>
+                          <div className="admin-import-txt-heading">
+                            <label className="form-label" htmlFor="txt-chapters-per-episode">Số chương gộp thành một tập</label>
+                            <input
+                              id="txt-chapters-per-episode"
+                              className="form-input admin-import-txt-count"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={textChaptersPerEpisode}
+                              onChange={(event) => setTextChaptersPerEpisode(event.target.value)}
+                              disabled={importing || savingImportedChapters}
+                            />
+                          </div>
                           <button
                             type="button"
                             className="admin-import-txt-button"
@@ -814,7 +847,7 @@ export function Admin() {
                             <span className="admin-import-txt-icon"><Upload size={18} /></span>
                             <span className="admin-import-txt-copy">
                               <strong>{importing ? 'Đang đọc tệp TXT...' : 'Chọn tệp TXT'}</strong>
-                              <small>Chọn tệp .txt để tự động nhận diện và chia chương</small>
+                              <small>Tải tệp TXT để tách chương và thêm vào danh sách</small>
                             </span>
                           </button>
                         </div>
@@ -832,24 +865,24 @@ export function Admin() {
                     </div>
                     <div className="chapter-number-title-grid">
                       <div className="form-group">
-                    <label className="form-label">Số chương</label>
-                    <input
-                      className="form-input"
-                      type="number"
-                      min="1"
-                      value={form.number}
-                      onChange={(e) => setForm({ ...form, number: e.target.value })}
-                      placeholder="Tự động"
-                    />
+                        <label className="form-label">Số chương</label>
+                        <input
+                          className="form-input"
+                          type="number"
+                          min="1"
+                          value={form.number}
+                          onChange={(e) => setForm({ ...form, number: e.target.value })}
+                          placeholder="Tự động"
+                        />
                       </div>
                       <div className="form-group">
-                    <label className="form-label">Tiêu đề chương</label>
-                    <input
-                      className="form-input"
-                      value={form.title}
-                      onChange={(e) => setForm({ ...form, title: e.target.value })}
-                      placeholder="Nhập tiêu đề..."
-                    />
+                        <label className="form-label">Tiêu đề chương</label>
+                        <input
+                          className="form-input"
+                          value={form.title}
+                          onChange={(e) => setForm({ ...form, title: e.target.value })}
+                          placeholder="Nhập tiêu đề..."
+                        />
                       </div>
                     </div>
                     <div className="form-group">
@@ -860,21 +893,11 @@ export function Admin() {
                     onChange={(e) => setForm({ ...form, content: e.target.value })}
                     placeholder="Dán nội dung chương vào đây..."
                   />
+                  <div className="chapter-content-count" aria-live="polite">
+                    {contentWordCount.toLocaleString('vi-VN')} từ
+                  </div>
                     </div>
 
-                    <div className="form-footer">
-                  <button className="btn btn-dark" onClick={submit} disabled={importing || savingImportedChapters}>
-                    {savingImportedChapters
-                      ? 'Đang lưu...'
-                      : mergedSourceCount
-                        ? 'Lưu 1 tập đã gộp'
-                        : importedChapters.length
-                          ? `Lưu ${importedChapters.length} chương`
-                          : 'Lưu'}
-                  </button>
-                    <button className="btn btn-outline" onClick={editing ? cancelEdit : closeForm} disabled={importing || savingImportedChapters}>{editing ? 'Hủy' : 'Đóng'}</button>
-                  <span className="admin-sr-only" role="status" aria-live="polite">{status}</span>
-                    </div>
                 </div>
 
                 {selected && selected.chapters.length > 0 && (
@@ -938,6 +961,26 @@ export function Admin() {
                     </div>
                   </div>
                 )}
+                </div>
+                <div className="form-footer">
+                  <div className="form-footer-actions">
+                    <div className="form-footer-buttons">
+                      <button className="btn btn-dark" onClick={submit} disabled={importing || savingImportedChapters}>
+                        {savingImportedChapters
+                          ? 'Đang lưu...'
+                          : mergedSourceCount && importedChapters.length === 1
+                            ? 'Lưu 1 tập đã gộp'
+                            : mergedSourceCount
+                              ? `Lưu ${importedChapters.length} tập đã gộp`
+                              : importedChapters.length
+                                ? `Lưu ${importedChapters.length} chương`
+                                : 'Lưu'}
+                      </button>
+                      <button className="btn btn-outline" onClick={editing ? cancelEdit : closeForm} disabled={importing || savingImportedChapters}>{editing ? 'Hủy' : 'Đóng'}</button>
+                    </div>
+                    {importStatus && <div className="form-msg" aria-live="polite">{importStatus}</div>}
+                    <span className="admin-sr-only" role="status" aria-live="polite">{status}</span>
+                  </div>
                 </div>
               </div>
             </div>

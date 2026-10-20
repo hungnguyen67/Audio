@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize2 } from 'lucide-react';
+import { Minus } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { Pagination } from '../shared/Pagination';
@@ -54,6 +54,7 @@ export function Story({ storyId: storyIdProp, active = true }) {
   const storyProgressRef = useRef(null);
   const [chapterPage, setChapterPage] = useState(1);
   const [chapterPageSize, setChapterPageSize] = useState(5);
+  const [miniPlayerDismissed, setMiniPlayerDismissed] = useState(false);
   const [status, setStatus] = useState('Vui lòng chọn một chương để bắt đầu nghe');
   const currentChapter = story?.chapters.find((chapter) => chapter.id === currentChapterRef.current);
   const playerChapter = selected || currentChapter;
@@ -65,6 +66,10 @@ export function Story({ storyId: storyIdProp, active = true }) {
   useEffect(() => {
     if (routeStoryId) setRetainedStoryId(routeStoryId);
   }, [routeStoryId]);
+
+  useEffect(() => {
+    if (active) setMiniPlayerDismissed(false);
+  }, [active]);
 
   useEffect(() => {
     if (!storyId) return;
@@ -341,6 +346,16 @@ export function Story({ storyId: storyIdProp, active = true }) {
     timerRef.current = window.setTimeout(() => selectChapter(next), 700);
   };
 
+  const dismissMiniPlayer = () => {
+    playbackRequestRef.current += 1;
+    window.clearTimeout(timerRef.current);
+    window.clearTimeout(progressTimerRef.current);
+    progressJobRef.current = null;
+    audioRef.current?.pause();
+    setMiniPlayerDismissed(true);
+  };
+
+  if (!active && miniPlayerDismissed) return null;
   if (!story && !active) return null;
 
   if (!story) {
@@ -438,17 +453,29 @@ export function Story({ storyId: storyIdProp, active = true }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="player-card">
                 <div className="player-label">Đang phát</div>
-                <Link
-                  to={`/story/${storyId}`}
-                  className="mini-player-open"
-                  aria-label="Mở trình phát đầy đủ"
-                  title="Mở trình phát"
-                >
-                  <Maximize2 size={17} strokeWidth={2} aria-hidden="true" />
-                </Link>
-                <div className="player-title">
-                  {playerChapter?.title || 'Chưa chọn chương'}
-                </div>
+                {!active && (
+                  <button
+                    type="button"
+                    className="mini-player-close"
+                    onClick={dismissMiniPlayer}
+                    aria-label="Ẩn trình phát mini"
+                    title="Ẩn trình phát"
+                  >
+                    <Minus size={19} strokeWidth={2.4} aria-hidden="true" />
+                  </button>
+                )}
+                {active ? (
+                  <div className="player-title">{playerChapter?.title || 'Chưa chọn chương'}</div>
+                ) : (
+                  <Link
+                    to={`/story/${storyId}`}
+                    className="player-title mini-player-title"
+                    aria-label="Mở trang truyện và trình phát"
+                    title="Mở trang truyện"
+                  >
+                    {playerChapter?.title || 'Chưa chọn chương'}
+                  </Link>
+                )}
                 <div className="player-status">{status}</div>
 
                 <div className="ctrl-row">

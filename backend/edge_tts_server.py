@@ -44,7 +44,8 @@ AUDIO_JOB_START_LOCK = threading.Lock()
 AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
-EDGE_TTS_CHUNK_CONCURRENCY = 2
+EDGE_TTS_CHUNK_SIZE = 1000
+EDGE_TTS_CHUNK_CONCURRENCY = 3
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 120
 CHAPTER_URL_PATTERN = re.compile(r"^/truyen/[^/]+/chuong-(\d+)/?$", re.IGNORECASE)
@@ -319,6 +320,8 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, {
                 "pythonExecutable": sys.executable,
                 "edgeTtsVersion": edge_tts.__version__,
+                "chunkSize": EDGE_TTS_CHUNK_SIZE,
+                "chunkConcurrency": EDGE_TTS_CHUNK_CONCURRENCY,
             })
             return
 
@@ -666,7 +669,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, chapter)
 
     @staticmethod
-    def split_content(content, max_size=4000):
+    def split_content(content, max_size=EDGE_TTS_CHUNK_SIZE):
         paragraphs = [part.strip() for part in re.split(r"\n\s*\n", content) if part.strip()]
         if not paragraphs:
             return [content]
@@ -824,7 +827,14 @@ class AudioHandler(SimpleHTTPRequestHandler):
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["completedChunks"].append({"index": index, "url": f"/api/audio-chunks/{chunk_id}"})
 
-    async def synthesize_chunks_parallel(self, chunks, voice, job_id, cache_id, max_concurrency=4):
+    async def synthesize_chunks_parallel(
+        self,
+        chunks,
+        voice,
+        job_id,
+        cache_id,
+        max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
+    ):
         semaphore = asyncio.Semaphore(max_concurrency)
         generation_started_at = time.perf_counter()
         chunk_latencies = []
