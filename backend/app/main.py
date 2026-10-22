@@ -1,7 +1,9 @@
 import asyncio
 import hashlib
 import json
+import os
 import re
+import sys
 import threading
 import time
 from urllib.request import Request, urlopen
@@ -1102,7 +1104,9 @@ def ensure_playback_tables():
 
 if __name__ == "__main__":
     ensure_playback_tables()
-    server = QuietThreadingHTTPServer(("127.0.0.1", 3001), AudioHandler)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "3001"))
+    server = QuietThreadingHTTPServer((host, port), AudioHandler)
     threading.Thread(target=auto_generate_missing_audio, daemon=True).start()
-    print(f"Audio Story Reader: http://127.0.0.1:3001 (edge-tts {edge_tts.__version__})", flush=True)
+    print(f"Audio Story Reader: http://{host}:{port} (edge-tts {edge_tts.__version__})", flush=True)
     server.serve_forever()

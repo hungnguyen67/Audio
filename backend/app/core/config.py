@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).parents[3].resolve()
@@ -12,9 +13,9 @@ EDGE_VOICES = {
 }
 
 DB_CONFIG = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "123456",
-    "database": "audio_story",
+    "host": os.environ.get("DB_HOST", "127.0.0.1"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
+    "user": os.environ.get("DB_USER", "root"),
+    "password": os.environ.get("DB_PASSWORD", "123456"),
+    "database": os.environ.get("DB_NAME", "audio_story"),
 }
