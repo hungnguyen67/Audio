@@ -1,5 +1,5 @@
 import { configureStore, createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import { requestJson } from './shared/api';
+import { requestJson } from './lib/apiClient';
 
 export const fetchStories = createAsyncThunk('stories/fetch', () => requestJson('/api/stories'));
 export const createStory = createAsyncThunk('stories/create', (title) => requestJson('/api/stories', {

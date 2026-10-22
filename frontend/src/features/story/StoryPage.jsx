@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Library, Minus } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { Pagination } from '../shared/Pagination';
-import { Select } from '../shared/Select';
-import { requestJson } from '../shared/api';
+import { Pagination } from '../../components/Pagination';
+import { Select } from '../../components/Select';
+import { requestJson } from '../../lib/apiClient';
 
 const voices = [['edge:vi-VN-HoaiMyNeural', 'Hoài My'], ['edge:vi-VN-NamMinhNeural', 'Nam Minh']];
 const speeds = [1.5, 1.75, 2, 2.2];
@@ -18,7 +18,7 @@ function HeadphonesIcon() {
   );
 }
 
-export function Story({ storyId: storyIdProp, active = true }) {
+export function StoryPage({ storyId: storyIdProp, active = true }) {
   const location = useLocation();
   const routeParams = useParams();
   const isAdminStoriesPage = location.pathname === '/admin' && location.hash === '#admin-stories';

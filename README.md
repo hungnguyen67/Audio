@@ -1,0 +1,15 @@
+# Audio Story Reader
+
+## Development
+
+- Install frontend dependencies with `npm ci` in `frontend/`.
+- Create the project Python environment and install `backend/requirements.txt`.
+- Initialize MySQL with `backend/migrations/001_init.sql`, then apply
+  `backend/migrations/002_migration.sql`.
+- Run `scripts/start.ps1` to start the backend and Vite development server.
+
+The frontend development server is available at `http://127.0.0.1:3000`.
+The backend listens at `http://127.0.0.1:3001`.
+
+To create a production frontend build, run `npm run build` in `frontend/`.
+The generated files are written to `frontend/dist/`.

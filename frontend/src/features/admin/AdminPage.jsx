@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AudioLines, Home, Library, Menu, Plus, Sparkles, Upload } from 'lucide-react';
+import { AudioLines, Home, Library, Menu, Plus, Upload } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
-import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../store';
-import { Pagination } from '../shared/Pagination';
-import { toast } from '../shared/Toast';
-import { ConfirmDialog } from '../shared/ConfirmDialog';
-import { requestJson } from '../shared/api';
-import { groupChapters, splitTextIntoChapters } from '../shared/textChapters';
+import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../../store';
+import { Pagination } from '../../components/Pagination';
+import { toast } from '../../components/Toast';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { requestJson } from '../../lib/apiClient';
+import { groupChapters, splitTextIntoChapters } from '../../lib/textChapters';
 
 function isDuplicateChapterNumberError(error) {
   return /duplicate entry .* for key ['`]?chapters\.unique_story_chapter/i.test(error?.message || '');
@@ -22,23 +22,7 @@ function HeadphonesIcon() {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-  );
-}
-
-export function Admin() {
+export function AdminPage() {
   const dispatch = useDispatch();
   const stories = useSelector((state) => state.stories.items);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(

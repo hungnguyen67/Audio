@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { fetchStories, receiveStories, store } from './store';
-import { requestJson } from './shared/api';
-import { toast } from './shared/Toast';
-import { Library } from './pages/Library';
-import { Story } from './pages/Story';
-import { Admin } from './pages/Admin';
+import { fetchStories, receiveStories, store } from '../store';
+import { requestJson } from '../lib/apiClient';
+import { toast } from '../components/Toast';
+import { LibraryPage } from '../features/library/LibraryPage';
+import { StoryPage } from '../features/story/StoryPage';
+import { AdminPage } from '../features/admin/AdminPage';
 
 const STORY_REFRESH_INTERVAL_MS = 5000;
 
@@ -99,11 +99,11 @@ export function App() {
 
   return <>
     <Routes>
-      <Route path="/" element={<Library />} />
+      <Route path="/" element={<LibraryPage />} />
       <Route path="/story/:storyId" element={null} />
-      <Route path="/admin" element={<Admin />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    <Story storyId={storyId} active={Boolean(storyId)} />
+    <StoryPage storyId={storyId} active={Boolean(storyId)} />
   </>;
 }

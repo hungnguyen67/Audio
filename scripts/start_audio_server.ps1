@@ -6,11 +6,17 @@ if ($backendListener) {
     throw "Audio backend is already listening on port 3001 (PID $processIds). Stop that backend before restarting so the updated .venv is used."
 }
 
-$pythonExecutable = Join-Path $PSScriptRoot '..\.venv\Scripts\python.exe'
+$root = Split-Path -Parent $PSScriptRoot
+$pythonExecutable = Join-Path $root '.venv\Scripts\python.exe'
 $edgeTtsVersion = & $pythonExecutable -c "import edge_tts; print(edge_tts.__version__)"
 if ($LASTEXITCODE -ne 0) {
     throw "Could not read edge-tts version from $pythonExecutable"
 }
 Write-Host "Starting backend with edge-tts $edgeTtsVersion"
 
-& $pythonExecutable (Join-Path $PSScriptRoot 'edge_tts_server.py')
+Push-Location (Join-Path $root 'backend')
+try {
+    & $pythonExecutable -m app.main
+} finally {
+    Pop-Location
+}

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchStories } from '../store';
-import { Pagination } from '../shared/Pagination';
+import { fetchStories } from '../../store';
+import { Pagination } from '../../components/Pagination';
 
 function HeadphonesIcon() {
   return (
@@ -13,7 +13,7 @@ function HeadphonesIcon() {
   );
 }
 
-export function Library() {
+export function LibraryPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { items: stories, status, error } = useSelector((state) => state.stories);
