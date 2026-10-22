@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AudioLines, Home, Library, Menu, Plus, Upload } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
+import { BrandIcon } from '../../components/BrandIcon';
 import { createStory, deleteChapter, deleteStory, fetchStories, saveChapter, updateChapter, updateStory } from '../../store';
 import { Pagination } from '../../components/Pagination';
 import { toast } from '../../components/Toast';
@@ -11,15 +12,6 @@ import { groupChapters, splitTextIntoChapters } from '../../lib/textChapters';
 
 function isDuplicateChapterNumberError(error) {
   return /duplicate entry .* for key ['`]?chapters\.unique_story_chapter/i.test(error?.message || '');
-}
-
-function HeadphonesIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
-      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
-    </svg>
-  );
 }
 
 export function AdminPage() {
@@ -55,7 +47,6 @@ export function AdminPage() {
   const chapterSelectionDrag = useRef(null);
   const selected = stories.find((s) => s.id === storyId);
   const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
-  const contentWordCount = form.content.trim() ? form.content.trim().split(/\s+/u).length : 0;
 
   useEffect(() => {
     const stopChapterSelection = () => {
@@ -585,7 +576,7 @@ export function AdminPage() {
     <div className={`admin-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
       <aside className="admin-sidebar" id="admin-sidebar">
         <Link to="/" className="admin-sidebar-brand">
-          <span className="admin-sidebar-brand-icon"><HeadphonesIcon /></span>
+          <span className="admin-sidebar-brand-icon"><BrandIcon /></span>
           <span>
             <strong>Audio Story</strong>
             <small>STUDIO</small>
@@ -850,9 +841,6 @@ export function AdminPage() {
                     onChange={(e) => setForm({ ...form, content: e.target.value })}
                     placeholder="Dán nội dung chương vào đây..."
                   />
-                  <div className="chapter-content-count" aria-live="polite">
-                    {contentWordCount.toLocaleString('vi-VN')} từ
-                  </div>
                     </div>
 
                 </div>
@@ -909,9 +897,6 @@ export function AdminPage() {
                             onClick={() => open(selected, chapter)}
                           >
                             {chapter.title}
-                          </button>
-                          <button className="btn-small-action" onClick={() => requestDelete('chapter', chapter.id)} disabled={bulkDeletingChapters}>
-                            Xóa
                           </button>
                         </div>
                       ))}

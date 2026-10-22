@@ -2,21 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Library, Minus } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
+import { BrandIcon } from '../../components/BrandIcon';
 import { Pagination } from '../../components/Pagination';
 import { Select } from '../../components/Select';
 import { requestJson } from '../../lib/apiClient';
 
 const voices = [['edge:vi-VN-HoaiMyNeural', 'Hoài My'], ['edge:vi-VN-NamMinhNeural', 'Nam Minh']];
 const speeds = [1.5, 1.75, 2, 2.2];
-
-function HeadphonesIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-    </svg>
-  );
-}
 
 export function StoryPage({ storyId: storyIdProp, active = true }) {
   const location = useLocation();
@@ -361,10 +353,10 @@ export function StoryPage({ storyId: storyIdProp, active = true }) {
   if (!story) {
     return (
       <div className="story-screen">
-        <nav className="navbar">
+        <nav className="navbar story-navbar">
           <div className="navbar-inner">
             <div className="brand">
-              <div className="brand-icon"><HeadphonesIcon /></div>
+              <div className="brand-icon"><BrandIcon /></div>
               <div className="brand-text">
                 <span className="brand-name">Audio Story Reader</span>
                 <span className="brand-page">Đang phát</span>
@@ -382,10 +374,10 @@ export function StoryPage({ storyId: storyIdProp, active = true }) {
 
   return (
     <div className={`story-screen${active ? '' : ' is-minimized'}`}>
-      <nav className="navbar">
+      <nav className="navbar story-navbar">
         <div className="navbar-inner">
           <div className="brand">
-            <div className="brand-icon"><HeadphonesIcon /></div>
+            <div className="brand-icon"><BrandIcon /></div>
             <div className="brand-text">
               <span className="brand-name">Audio Story Reader</span>
               <span className="brand-page">Đang phát</span>
@@ -397,11 +389,10 @@ export function StoryPage({ storyId: storyIdProp, active = true }) {
       <main>
         <div className="container">
           {/* Story header */}
-          <div className="page-hero">
-            <div>
-              <h1 style={{ fontSize: 'clamp(1.2rem, 2vw, 1.45rem)', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 5 }}>
-                {story.title}
-              </h1>
+          <div className="page-hero story-page-hero">
+            <div className="story-page-hero-copy">
+              <div className="story-eyebrow">TRUYỆN AUDIO</div>
+              <h1 className="story-page-title">{story.title}</h1>
               {lastListenedChapter ? (
                 <div className="story-progress-label">Đã nghe đến tập {lastListenedChapter}</div>
               ) : (

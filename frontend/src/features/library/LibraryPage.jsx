@@ -2,16 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStories } from '../../store';
+import { BrandIcon } from '../../components/BrandIcon';
 import { Pagination } from '../../components/Pagination';
-
-function HeadphonesIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-    </svg>
-  );
-}
 
 export function LibraryPage() {
   const navigate = useNavigate();
@@ -28,10 +20,10 @@ export function LibraryPage() {
   return (
     <>
       {/* ── Navbar ─────────────────────────── */}
-      <nav className="navbar">
+      <nav className="navbar library-navbar">
         <div className="navbar-inner">
           <div className="brand">
-            <div className="brand-icon"><HeadphonesIcon /></div>
+            <div className="brand-icon"><BrandIcon /></div>
             <div className="brand-text">
               <span className="brand-name">Audio Story Reader</span>
               <span className="brand-page">Thư viện</span>
@@ -41,25 +33,30 @@ export function LibraryPage() {
       </nav>
 
       {/* ── Main ───────────────────────────── */}
-      <main>
+      <main className="library-page">
         <div className="container library-container">
+          <header className="library-intro">
+            <div className="library-intro-copy">
+              <span className="library-eyebrow">Thư viện audio</span>
+              <h1>Truyện dành cho bạn</h1>
+              <p>Chọn một câu chuyện và tiếp tục lắng nghe theo nhịp của riêng bạn.</p>
+            </div>
+          </header>
 
-          {/* Stories section */}
           <div className="section-card">
-            <div className="section-head">
-              <div>
-                <div className="section-title">Danh sách truyện</div>
-                <div className="section-sub">
-                  {error
-                    ? <span style={{ color: '#dc2626' }}>{error}</span>
-                    : status === 'loading'
-                      ? 'Đang tải...'
-                      : `Hiển thị ${stories.length} tác phẩm hiện có`}
+            <div className="section-head library-section-head">
+              <div className="library-section-heading">
+                <span className="library-section-icon" aria-hidden="true">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                  </svg>
+                </span>
+                <div>
+                  <h2 className="library-section-title">Truyện mới cập nhật</h2>
+                  <p className="section-sub">Những câu chuyện có trong thư viện của bạn</p>
                 </div>
               </div>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
             </div>
 
             {/* Table */}
@@ -71,7 +68,19 @@ export function LibraryPage() {
               </div>
 
               {visibleStories.map((story, i) => (
-                <div key={story.id} className="dt-row" onClick={() => navigate(`/story/${story.id}`)}>
+                <div
+                  key={story.id}
+                  className="dt-row"
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => navigate(`/story/${story.id}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      navigate(`/story/${story.id}`);
+                    }
+                  }}
+                >
                   <span className="row-num">{String((page - 1) * pageSize + i + 1).padStart(2, '0')}</span>
                   <div style={{ overflow: 'hidden' }}>
                     <div className="row-title">{story.title}</div>
@@ -82,6 +91,16 @@ export function LibraryPage() {
                   <span className="row-meta">{story.chapters.length} chương</span>
                 </div>
               ))}
+
+              {!visibleStories.length && (
+                <div className={`library-empty${error ? ' has-error' : ''}`} role={error ? 'alert' : 'status'}>
+                  {error
+                    ? error
+                    : status === 'loading'
+                      ? 'Đang tải thư viện truyện...'
+                      : 'Thư viện chưa có truyện nào.'}
+                </div>
+              )}
             </div>
             <Pagination
               total={stories.length}
