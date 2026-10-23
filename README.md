@@ -1,18 +1,44 @@
 # Audio Story Reader
 
-## Development
+## Run locally on Windows (without Docker)
 
-- Install frontend dependencies with `npm ci` in `frontend/`.
-- Create the project Python environment and install `backend/requirements.txt`.
-- Initialize MySQL with `backend/migrations/001_init.sql`, then apply
-  `backend/migrations/002_migration.sql`.
-- Run `scripts/start.ps1` to start the backend and Vite development server.
+Prerequisites: Python, Node.js/npm, and a local MySQL server. The database
+connection defaults are in `backend/app/core/config.py`. Initialize a fresh
+database with `backend/migrations/001_init.sql`; apply
+`backend/migrations/002_migration.sql` only when upgrading an older database.
 
-The frontend development server is available at `http://127.0.0.1:3000`.
-The backend listens at `http://127.0.0.1:3001`.
+From the repository root, create the Python environment and install backend
+dependencies once:
 
-To create a production frontend build, run `npm run build` in `frontend/`.
-The generated files are written to `frontend/dist/`.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r .\backend\requirements.txt
+```
+
+Install frontend dependencies once:
+
+```powershell
+cd .\frontend
+npm ci
+cd ..
+```
+
+Start both services with one command from the repository root:
+
+```powershell
+.\start-local.ps1
+```
+
+The script checks Python/npm, dependencies, and the MySQL connection, then
+opens separate PowerShell windows for the backend and frontend. Keep those
+windows open while using the app. If PowerShell blocks script execution, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
+```
+
+Open `http://127.0.0.1:3000`. The backend listens at
+`http://127.0.0.1:3001`.
 
 ## Docker
 
