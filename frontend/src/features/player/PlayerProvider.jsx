@@ -145,12 +145,17 @@ export function PlayerProvider({ children }) {
 
   const seekBy = useCallback(
     (seconds) => {
+      const progressive = audio.src.startsWith("blob:");
+      let seekStart = 0;
       let seekEnd = Number.isFinite(audio.duration) ? audio.duration : 0;
-      if (!seekEnd && audio.seekable.length) {
+      if (progressive && audio.buffered.length) {
+        seekStart = audio.buffered.start(0);
+        seekEnd = audio.buffered.end(audio.buffered.length - 1);
+      } else if (!seekEnd && audio.seekable.length) {
         seekEnd = audio.seekable.end(audio.seekable.length - 1);
       }
       if (seekEnd <= 0) return;
-      audio.currentTime = Math.min(seekEnd, Math.max(0, audio.currentTime + seconds));
+      audio.currentTime = Math.min(seekEnd, Math.max(seekStart, audio.currentTime + seconds));
     },
     [audio],
   );

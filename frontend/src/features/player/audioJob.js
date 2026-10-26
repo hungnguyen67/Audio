@@ -2,6 +2,8 @@ import { audioApi } from "../../api/audio";
 
 const POLL_INTERVAL_MS = 500;
 const INITIAL_BUFFER_CHUNKS = 3;
+const MAX_BUFFER_AHEAD_SECONDS = 300;
+const RETAINED_BUFFER_SECONDS = 120;
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -59,14 +61,81 @@ function waitForEvent(target, eventName, signal) {
   });
 }
 
+function updateSourceBuffer(sourceBuffer, signal, updateBuffer) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      sourceBuffer.removeEventListener("updateend", onUpdateEnd);
+      sourceBuffer.removeEventListener("error", onError);
+      signal.removeEventListener("abort", onAbort);
+    };
+    const onUpdateEnd = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Không thể cập nhật bộ đệm audio."));
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason);
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    sourceBuffer.addEventListener("updateend", onUpdateEnd, { once: true });
+    sourceBuffer.addEventListener("error", onError, { once: true });
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      updateBuffer();
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
 function findAudioChunk(job, index) {
   return job.completedChunks?.find((chunk) => chunk.index === index);
 }
 
+async function removePlayedBuffer(sourceBuffer, audio, signal) {
+  const ranges = sourceBuffer.buffered;
+  if (!ranges.length) return false;
+
+  const start = ranges.start(0);
+  const removeEnd = Math.min(
+    audio.currentTime - RETAINED_BUFFER_SECONDS,
+    ranges.end(0) - 0.25,
+  );
+  if (removeEnd <= start) return false;
+
+  await updateSourceBuffer(sourceBuffer, signal, () => sourceBuffer.remove(start, removeEnd));
+  audio.dispatchEvent(new Event("progress"));
+  return true;
+}
+
+async function waitForBufferCapacity(sourceBuffer, audio, signal) {
+  while (true) {
+    signal.throwIfAborted();
+    const ranges = sourceBuffer.buffered;
+    const bufferedEnd = ranges.length ? ranges.end(ranges.length - 1) : audio.currentTime;
+    if (bufferedEnd - audio.currentTime <= MAX_BUFFER_AHEAD_SECONDS) return;
+
+    await sleep(POLL_INTERVAL_MS, signal);
+  }
+}
+
 async function appendChunk(sourceBuffer, bytes, signal, audio) {
-  const update = waitForEvent(sourceBuffer, "updateend", signal);
-  sourceBuffer.appendBuffer(bytes);
-  await update;
+  await waitForBufferCapacity(sourceBuffer, audio, signal);
+  try {
+    await updateSourceBuffer(sourceBuffer, signal, () => sourceBuffer.appendBuffer(bytes));
+  } catch (error) {
+    if (error.name !== "QuotaExceededError") throw error;
+    if (!(await removePlayedBuffer(sourceBuffer, audio, signal))) throw error;
+    await updateSourceBuffer(sourceBuffer, signal, () => sourceBuffer.appendBuffer(bytes));
+  }
   audio.dispatchEvent(new Event("progress"));
 }
 

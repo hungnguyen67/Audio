@@ -3,18 +3,22 @@ import { Pause, Play, Volume2 } from "lucide-react";
 import { usePlayer } from "./usePlayer";
 
 function useAudioTime(audio) {
-  const [time, setTime] = useState({ currentTime: 0, duration: 0, paused: true, live: false, ready: false });
+  const [time, setTime] = useState({ currentTime: 0, duration: 0, minTime: 0, paused: true, live: false, ready: false });
   useEffect(() => {
     const sync = () => {
-      const live = audio.duration === Infinity;
+      const progressive = audio.src.startsWith("blob:");
+      const live = progressive && audio.duration === Infinity;
       let duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
-      const ranges = live ? audio.seekable : audio.buffered;
-      if (live && ranges.length) {
+      const ranges = progressive ? audio.buffered : audio.seekable;
+      let minTime = 0;
+      if (progressive && ranges.length) {
+        minTime = ranges.start(0);
         duration = ranges.end(ranges.length - 1);
       }
       setTime({
         currentTime: audio.currentTime || 0,
         duration,
+        minTime,
         paused: audio.paused,
         live: live && duration > 0,
         ready: audio.readyState >= 2,
@@ -51,7 +55,11 @@ function formatTime(seconds) {
 
 export function AudioControls() {
   const { audio } = usePlayer();
-  const { currentTime, duration, paused, live, ready } = useAudioTime(audio);
+  const { currentTime, duration, minTime, paused, live, ready } = useAudioTime(audio);
+  const seekRange = Math.max(0, duration - minTime);
+  const seekProgress = seekRange
+    ? ((Math.min(currentTime, duration) - minTime) / seekRange) * 100
+    : 0;
 
   const togglePlay = () => {
     if (audio.paused) audio.play().catch(() => {});
@@ -73,12 +81,12 @@ export function AudioControls() {
         <input
           className="audio-range"
           type="range"
-          min="0"
+          min={minTime}
           max={duration || 0}
           step="1"
-          value={Math.min(currentTime, duration || 0)}
+          value={Math.min(duration || 0, Math.max(minTime, currentTime))}
           style={{
-            "--range-progress": `${duration ? (currentTime / duration) * 100 : 0}%`,
+            "--range-progress": `${seekProgress}%`,
           }}
           disabled={!ready || duration <= 0}
           aria-label="Thanh tua"
