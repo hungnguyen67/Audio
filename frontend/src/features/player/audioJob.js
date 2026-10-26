@@ -34,7 +34,11 @@ function describeProgress(job) {
     ? ` · đang tạo ${activeChunks
         .map((chunk) => {
           const number = chunk.index + 1;
-          const retry = chunk.attempt > 1 ? ` (thử lại ${chunk.attempt}/3)` : "";
+          const retry = chunk.attempt > 1 ? ` (lần thử ${chunk.attempt})` : "";
+          if (chunk.state === "retrying") {
+            const reason = chunk.error ? `: ${chunk.error}` : "";
+            return `đoạn ${number} · thử lại sau ${chunk.retryInSeconds ?? 0}s${reason}`;
+          }
           const received = chunk.receivedBytes
             ? ` · nhận ${Math.round(chunk.receivedBytes / 1024)} KB`
             : "";

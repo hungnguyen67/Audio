@@ -32,7 +32,7 @@ AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_SIZE = 1000
-EDGE_TTS_CHUNK_CONCURRENCY = 3
+EDGE_TTS_CHUNK_CONCURRENCY = 1
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 def auto_generate_missing_audio():
     print(
@@ -685,7 +685,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
         async def synth_one(index, text):
             async with semaphore:
-                last_error = None
                 received_audio_bytes = 0
                 next_progress_bytes = 1024 * 1024
                 chunk_started_at = time.perf_counter()
@@ -693,6 +692,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     "index": index,
                     "attempt": 1,
                     "receivedBytes": 0,
+                    "state": "generating",
                 }
                 with CHUNK_JOBS_LOCK:
                     CHUNK_JOBS[job_id]["activeChunks"].append(active_chunk)
@@ -716,10 +716,17 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
 
                 try:
-                    for attempt in range(3):
+                    attempt = 0
+                    while True:
+                        attempt += 1
                         with CHUNK_JOBS_LOCK:
-                            active_chunk["attempt"] = attempt + 1
-                            active_chunk["receivedBytes"] = 0
+                            active_chunk.update({
+                                "attempt": attempt,
+                                "receivedBytes": 0,
+                                "retryInSeconds": 0,
+                                "state": "generating",
+                                "error": None,
+                            })
                         attempt_started_at = time.perf_counter()
                         try:
                             received_audio_bytes = 0
@@ -732,29 +739,37 @@ class AudioHandler(SimpleHTTPRequestHandler):
                             print(
                                 f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
                                 f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
-                                f"{attempt} lần thử lại).",
+                                f"{attempt - 1} lần thử lại).",
                                 flush=True,
                             )
-                            return index, audio, time.perf_counter() - chunk_started_at, attempt
+                            return index, audio, time.perf_counter() - chunk_started_at, attempt - 1
                         except Exception as error:
-                            last_error = (
+                            retry_error = (
                                 RuntimeError(
                                     f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
                                 )
                                 if isinstance(error, asyncio.TimeoutError)
                                 else error
                             )
+                            retry_delay = min(60, 2 ** min(attempt, 6))
+                            with CHUNK_JOBS_LOCK:
+                                active_chunk.update({
+                                    "state": "retrying",
+                                    "error": str(retry_error)[:160],
+                                    "retryInSeconds": retry_delay,
+                                })
                             print(
                                 f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                                f"(lần {attempt + 1}/3, {type(last_error).__name__}, "
+                                f"(lần {attempt}, {type(retry_error).__name__}, "
                                 f"{time.perf_counter() - attempt_started_at:.2f}s, "
-                                f"{received_audio_bytes:,} byte): {last_error}",
+                                f"{received_audio_bytes:,} byte): {retry_error}. "
+                                f"Thử lại sau {retry_delay}s.",
                                 flush=True,
                             )
-                            if attempt < 2:
-                                await asyncio.sleep(2 ** (attempt + 1))
-                    assert last_error is not None
-                    raise last_error
+                            for seconds_left in range(retry_delay - 1, -1, -1):
+                                await asyncio.sleep(1)
+                                with CHUNK_JOBS_LOCK:
+                                    active_chunk["retryInSeconds"] = seconds_left
                 finally:
                     with CHUNK_JOBS_LOCK:
                         CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
