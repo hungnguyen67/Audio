@@ -1,0 +1,63 @@
+import { useEditorContext } from "./EditorContext";
+
+export function ChapterFields() {
+  const { state, dispatch } = useEditorContext();
+  const { form } = state;
+  const bind = (field) => ({
+    value: form[field],
+    onChange: (event) => dispatch({ type: "SET_FIELD", field, value: event.target.value }),
+  });
+
+  return (
+    <>
+      <div className="form-group">
+        <label className="form-label" htmlFor="chapter-story-title">
+          Tên truyện
+        </label>
+        <input
+          id="chapter-story-title"
+          className="form-input"
+          placeholder="Nhập hoặc sửa tên truyện..."
+          {...bind("story")}
+        />
+      </div>
+      <div className="chapter-number-title-grid">
+        <div className="form-group">
+          <label className="form-label" htmlFor="chapter-number">
+            Số chương
+          </label>
+          <input
+            id="chapter-number"
+            className="form-input"
+            type="number"
+            min="1"
+            placeholder="Tự động"
+            {...bind("number")}
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="chapter-title">
+            Tiêu đề chương
+          </label>
+          <input
+            id="chapter-title"
+            className="form-input"
+            placeholder="Nhập tiêu đề..."
+            {...bind("title")}
+          />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label" htmlFor="chapter-content">
+          Nội dung chương
+        </label>
+        <textarea
+          id="chapter-content"
+          className="form-textarea"
+          placeholder="Dán nội dung chương vào đây..."
+          {...bind("content")}
+        />
+      </div>
+    </>
+  );
+}

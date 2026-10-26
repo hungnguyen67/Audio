@@ -9,17 +9,24 @@ export async function requestJson(url, options) {
     result = JSON.parse(body);
   } catch {
     if (!response.ok) {
-      const isHtml = response.headers.get('content-type')?.includes('text/html');
+      const isHtml = response.headers.get("content-type")?.includes("text/html");
       const details = isHtml
-        ? ' Máy chủ trả về trang lỗi thay vì JSON; hãy kiểm tra log backend.'
+        ? " Máy chủ trả về trang lỗi thay vì JSON; hãy kiểm tra log backend."
         : body.trim()
           ? ` ${body.trim().slice(0, 300)}`
-          : '';
+          : "";
       throw new Error(`API trả lỗi HTTP ${response.status}.${details}`);
     }
     throw new Error(`API trả dữ liệu không phải JSON (HTTP ${response.status}).`);
   }
 
-  if (!response.ok) throw new Error(result.message || 'Yêu cầu thất bại.');
+  if (!response.ok) throw new Error(result.message || "Yêu cầu thất bại.");
   return result;
 }
+
+export const jsonRequest = (method, body, extra = {}) => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+  ...extra,
+});
