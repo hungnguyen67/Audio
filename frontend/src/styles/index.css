@@ -330,12 +330,14 @@ body {
   grid-template-columns: 32px minmax(0, 1fr) 90px;
 }
 
-.lib-tbl .dt-row {
-  min-height: 54px;
+.lib-tbl .row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.lib-tbl .dt-head > :last-child,
-.lib-tbl .dt-row > :last-child {
+.lib-tbl .dt-head > :nth-child(3),
+.lib-tbl .dt-row > :nth-child(3) {
   padding-right: 8px;
   text-align: right;
 }
@@ -517,14 +519,14 @@ body {
 }
 
 .btn-open {
-  min-width: 80px;
-  height: 30px;
-  padding: 0 8px;
+  min-width: 64px;
+  height: 26px;
+  padding: 0 7px;
   background: #f8f9fa;
   border: 1px solid #d9dde2;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #202124;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;

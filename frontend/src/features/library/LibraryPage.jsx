@@ -55,12 +55,7 @@ export function LibraryPage() {
               }}
             >
               <span className="row-num">{String((page - 1) * pageSize + i + 1).padStart(2, '0')}</span>
-              <div style={{ overflow: 'hidden' }}>
-                <div className="row-title">{story.title}</div>
-                {story.description && (
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{story.description}</div>
-                )}
-              </div>
+              <div className="row-title">{story.title}</div>
               <span className="row-meta">{story.chapters.length} chương</span>
             </div>
           ))}
