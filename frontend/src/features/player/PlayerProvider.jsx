@@ -44,6 +44,9 @@ export function PlayerProvider({ children }) {
   const requestRef = useRef(null);
   const nextTimerRef = useRef(null);
   const loadedChapterIdRef = useRef(null);
+  const streamingJobRef = useRef(null);
+  const playbackStartedRef = useRef(false);
+  const playbackErrorRef = useRef(false);
   const persistence = usePlaybackPersistence({ audio, loadedChapterIdRef, settings });
 
   const latest = useRef({});
@@ -62,6 +65,9 @@ export function PlayerProvider({ children }) {
       requestRef.current = controller;
       const { signal } = controller;
 
+      streamingJobRef.current = null;
+      playbackStartedRef.current = false;
+      playbackErrorRef.current = false;
       audio.pause();
       loadedChapterIdRef.current = null;
       setCurrent({ storyId, chapterId: target.id });
@@ -74,13 +80,29 @@ export function PlayerProvider({ children }) {
         latest.current.settings.apply(saved);
         const source = await resolveAudioUrl(target.id, saved.voice, { signal });
         if (source.jobId) {
+          streamingJobRef.current = source.jobId;
           setStatus("Đang chuẩn bị audio để phát liền mạch...");
-          monitorAudioJob(source.jobId, { signal, onProgress: setStatus })
+          monitorAudioJob(source.jobId, {
+            signal,
+            onProgress: (progress) => {
+              if (playbackErrorRef.current) return;
+              setStatus(
+                playbackStartedRef.current
+                  ? progress
+                  : progress.replace("Đang phát ·", "Đang chuẩn bị phát ·"),
+              );
+            },
+          })
             .then(() => {
-              if (!signal.aborted) setStatus("Đã tạo xong audio · tiếp tục phát");
+              if (!signal.aborted && !playbackErrorRef.current) {
+                streamingJobRef.current = null;
+                setStatus("Đã tạo xong audio · tiếp tục phát");
+              }
             })
             .catch((monitorError) => {
-              if (!signal.aborted) setStatus(`Tạo audio bị gián đoạn: ${monitorError.message}`);
+              if (!signal.aborted && !playbackErrorRef.current) {
+                setStatus(`Tạo audio bị gián đoạn: ${monitorError.message}`);
+              }
             });
         } else {
           setStatus("Đang phát toàn bộ tập...");
@@ -98,6 +120,9 @@ export function PlayerProvider({ children }) {
   const stop = useCallback(() => {
     persistence.flush();
     cancelPending();
+    streamingJobRef.current = null;
+    playbackStartedRef.current = false;
+    playbackErrorRef.current = false;
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
@@ -134,13 +159,24 @@ export function PlayerProvider({ children }) {
       nextTimerRef.current = setTimeout(() => play(now.storyId, next), AUTO_NEXT_DELAY_MS);
     };
     const onError = () => {
-      if (audio.getAttribute("src")) setStatus("Không tải được audio.");
+      if (audio.getAttribute("src")) {
+        playbackErrorRef.current = true;
+        setStatus("Không thể phát audio. Hãy tải lại trang và chọn lại chương.");
+      }
+    };
+    const onPlaying = () => {
+      playbackStartedRef.current = true;
+      if (streamingJobRef.current) {
+        setStatus("Đang phát audio · tiếp tục tạo trong nền");
+      }
     };
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
+    audio.addEventListener("playing", onPlaying);
     return () => {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      audio.removeEventListener("playing", onPlaying);
     };
   }, [audio, play]);
 
