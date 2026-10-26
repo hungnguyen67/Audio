@@ -109,12 +109,8 @@ export function PlayerProvider({ children }) {
 
   useEffect(() => {
     const onEnded = () => {
-      const { story: currentStory, current: now, settings: s } = latest.current;
+      const { story: currentStory, current: now } = latest.current;
       if (!currentStory || !now) return;
-      if (!s.autoNext) {
-        setStatus("Đã phát xong tập");
-        return;
-      }
       const index = currentStory.chapters.findIndex((item) => item.id === now.chapterId);
       const next = index >= 0 ? currentStory.chapters[index + 1] : null;
       if (!next) {

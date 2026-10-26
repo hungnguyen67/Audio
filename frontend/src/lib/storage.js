@@ -3,7 +3,6 @@ import { useCallback, useState } from "react";
 export const STORAGE_KEYS = {
   voice: "audio-voice",
   playbackRate: "audio-playback-rate",
-  autoNext: "audio-auto-next",
   volume: "audio-volume",
   importUrl: "audio-story:lastChapterImportUrl",
 };

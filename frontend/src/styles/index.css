@@ -624,6 +624,24 @@ body {
   margin-bottom: 12px;
 }
 
+.player-card > .ctrl-row {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.player-card .audio-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.player-card .audio-actions-row .audio-volume {
+  flex: 1;
+  max-width: 180px;
+  margin-top: 0;
+}
+
 .ctrl-col {
   flex: 1;
 }
@@ -974,8 +992,8 @@ body {
 .admin-sidebar-toggle {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   color: #475569;
   background: transparent;
   border: 1px solid transparent;

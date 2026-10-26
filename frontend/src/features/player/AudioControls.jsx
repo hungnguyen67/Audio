@@ -27,8 +27,8 @@ function formatTime(seconds) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-export function AudioControls({ showVolume = false }) {
-  const { audio, settings } = usePlayer();
+export function AudioControls() {
+  const { audio } = usePlayer();
   const { currentTime, duration, paused } = useAudioTime(audio);
   const ready = duration > 0;
 
@@ -66,21 +66,25 @@ export function AudioControls({ showVolume = false }) {
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
       </div>
-      {showVolume && (
-        <div className="audio-volume">
-          <Volume2 size={15} aria-hidden="true" />
-          <input
-            className="audio-range"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={settings.volume}
-            aria-label="Âm lượng"
-            onChange={(event) => settings.setVolume(Number(event.target.value))}
-          />
-        </div>
-      )}
+    </div>
+  );
+}
+
+export function AudioVolume() {
+  const { settings } = usePlayer();
+  return (
+    <div className="audio-volume">
+      <Volume2 size={15} aria-hidden="true" />
+      <input
+        className="audio-range"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value={settings.volume}
+        aria-label="Âm lượng"
+        onChange={(event) => settings.setVolume(Number(event.target.value))}
+      />
     </div>
   );
 }

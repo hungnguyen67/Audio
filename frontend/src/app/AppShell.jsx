@@ -26,7 +26,7 @@ export function AppShell() {
                   aria-expanded={!collapsed}
                   onClick={() => setCollapsed((value) => !value)}
                 >
-                  <Menu size={19} />
+                  <Menu size={22} strokeWidth={2.2} aria-hidden="true" />
                 </button>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { Select } from "../../components/Select";
-import { AudioControls, SeekButtons } from "./AudioControls";
+import { AudioControls, AudioVolume, SeekButtons } from "./AudioControls";
 import { SPEEDS, VOICES } from "./constants";
 import { usePlayer } from "./usePlayer";
 
@@ -12,6 +12,8 @@ export function PlayerCard() {
       <div className="player-label">Đang phát</div>
       <div className="player-title">{chapter?.title || "Chưa chọn chương"}</div>
       <div className="player-status">{status}</div>
+
+      <AudioControls />
 
       <div className="ctrl-row">
         <div className="ctrl-col">
@@ -28,17 +30,8 @@ export function PlayerCard() {
         </div>
       </div>
 
-      <AudioControls showVolume />
       <div className="audio-actions-row">
-        <label className="auto-label">
-          <input
-            type="checkbox"
-            checked={settings.autoNext}
-            onChange={(event) => settings.setAutoNext(event.target.checked)}
-          />
-          <span className="check-box" aria-hidden="true" />
-          <span className="auto-label-text">Tự động phát chương</span>
-        </label>
+        <AudioVolume />
         <SeekButtons />
       </div>
     </div>

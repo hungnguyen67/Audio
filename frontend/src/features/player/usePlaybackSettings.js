@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo } from "react";
 import { STORAGE_KEYS, usePersistentState } from "../../lib/storage";
 import { DEFAULT_VOICE } from "./constants";
 
-/** voice / speed / volume / autoNext: lưu localStorage và đồng bộ lên <audio> ở một nơi duy nhất. */
+/** Voice, speed, and volume are persisted and synchronized with the shared audio element. */
 export function usePlaybackSettings(audio) {
   const [voice, setVoice] = usePersistentState(STORAGE_KEYS.voice, DEFAULT_VOICE);
   const [speed, setSpeed] = usePersistentState(STORAGE_KEYS.playbackRate, 1);
   const [volume, setVolume] = usePersistentState(STORAGE_KEYS.volume, 1);
-  const [autoNext, setAutoNext] = usePersistentState(STORAGE_KEYS.autoNext, false);
 
   useEffect(() => {
     // defaultPlaybackRate: đổi `src` sẽ reset playbackRate về giá trị này.
@@ -30,7 +29,7 @@ export function usePlaybackSettings(audio) {
   );
 
   return useMemo(
-    () => ({ voice, speed, volume, autoNext, setVoice, setSpeed, setVolume, setAutoNext, apply }),
-    [voice, speed, volume, autoNext, setVoice, setSpeed, setVolume, setAutoNext, apply],
+    () => ({ voice, speed, volume, setVoice, setSpeed, setVolume, apply }),
+    [voice, speed, volume, setVoice, setSpeed, setVolume, apply],
   );
 }
