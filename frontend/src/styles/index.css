@@ -771,71 +771,12 @@ body {
   box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.18);
 }
 
-.auto-label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  color: var(--text-2);
-  cursor: pointer;
-  margin-bottom: 14px;
-  user-select: none;
-}
-
-.auto-label input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.check-box {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  border: 1px solid #94a3b8;
-  border-radius: 4px;
-  background: #fff;
-  transition:
-    background 0.14s,
-    border-color 0.14s,
-    box-shadow 0.14s;
-}
-
-.auto-label input:checked + .check-box {
-  border-color: var(--link);
-  background: var(--link);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-}
-
-.auto-label input:checked + .check-box::after {
-  content: "";
-  display: block;
-  width: 4px;
-  height: 8px;
-  margin: 2px 0 0 5px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
 .audio-actions-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   margin-top: 8px;
-}
-
-.audio-actions-row .auto-label {
-  min-width: 0;
-  gap: 8px;
-  margin: 0;
-  line-height: 1.35;
-}
-
-.audio-actions-row .auto-label-text {
-  min-width: 0;
 }
 
 .audio-seek-controls {

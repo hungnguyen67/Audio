@@ -11,13 +11,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 import edge_tts
 import mysql.connector
 
-from app.core.config import EDGE_VOICES, FRONTEND_ROOT, ROOT, VOICE
+from app.core.config import EDGE_VOICES, FRONTEND_ROOT, VOICE
 from app.core.logging import configure_console_encoding
 from app.repositories.database import get_connection
 from app.services.chapter_import import fetch_chapter_from_url
