@@ -6,18 +6,24 @@ function useAudioTime(audio) {
   const [time, setTime] = useState({ currentTime: 0, duration: 0, paused: true, live: false, ready: false });
   useEffect(() => {
     const sync = () => {
-      const hasDuration = Number.isFinite(audio.duration) && audio.duration > 0;
+      const live = audio.duration === Infinity;
+      let duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+      const ranges = live ? audio.seekable : audio.buffered;
+      if (live && ranges.length) {
+        duration = ranges.end(ranges.length - 1);
+      }
       setTime({
         currentTime: audio.currentTime || 0,
-        duration: hasDuration ? audio.duration : 0,
+        duration,
         paused: audio.paused,
-        live: audio.duration === Infinity && audio.readyState >= 2,
+        live: live && duration > 0,
         ready: audio.readyState >= 2,
       });
     };
     const events = [
       "timeupdate",
       "durationchange",
+      "progress",
       "loadedmetadata",
       "loadeddata",
       "canplay",
@@ -81,7 +87,7 @@ export function AudioControls() {
           }}
         />
         <span className="audio-time">
-          {formatTime(currentTime)} / {live ? "LIVE" : formatTime(duration)}
+          {formatTime(currentTime)} / {formatTime(duration)}{live ? " · đang tạo" : ""}
         </span>
       </div>
     </div>

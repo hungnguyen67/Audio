@@ -130,11 +130,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, public_job or {"status": "not_found"})
             return
 
-        audio_stream_match = re.fullmatch(r"/api/audio-job-streams/([a-f0-9]+)", path)
-        if audio_stream_match:
-            self.stream_audio_job(audio_stream_match.group(1))
-            return
-
         playback_match = re.fullmatch(r"/api/playback-state/([a-f0-9]+)", path)
         if playback_match:
             self.get_playback_state(playback_match.group(1))
@@ -553,11 +548,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             with CHUNK_JOBS_LOCK:
                 existing_job = AUDIO_JOBS_BY_KEY.get(job_key)
             if existing_job:
-                self.send_json(HTTPStatus.ACCEPTED, {
-                    "status": "processing",
-                    "jobId": existing_job,
-                    "streamUrl": f"/api/audio-job-streams/{existing_job}",
-                })
+                self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": existing_job})
                 return
 
             if not cache:
@@ -584,7 +575,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     "completedCount": 0,
                     "totalChunks": 0,
                     "voice": voice,
-                    "cacheId": cache_id,
                 }
             queued_at = time.perf_counter()
             threading.Thread(
@@ -602,11 +592,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 ),
                 daemon=True,
             ).start()
-            self.send_json(HTTPStatus.ACCEPTED, {
-                "status": "processing",
-                "jobId": job_id,
-                "streamUrl": f"/api/audio-job-streams/{job_id}",
-            })
+            self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": job_id})
         except Exception as error:
             if connection and connection.is_connected():
                 connection.rollback()
@@ -914,90 +900,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         self.end_headers()
         self.wfile.write(audio)
-
-    def stream_audio_job(self, job_id):
-        with CHUNK_JOBS_LOCK:
-            job = CHUNK_JOBS.get(job_id)
-            cache_id = job.get("cacheId") if job else None
-        if not job or not cache_id:
-            self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy tác vụ tạo audio."})
-            return
-
-        def get_job_state():
-            with CHUNK_JOBS_LOCK:
-                current_job = CHUNK_JOBS.get(job_id)
-                if not current_job:
-                    return None, 0, set()
-                available = {item["index"] for item in current_job["completedChunks"]}
-                return current_job["status"], current_job["totalChunks"], available
-
-        # Buffer the first three chunks before playback to reduce pauses while later chunks are synthesized.
-        while True:
-            state, total_chunks, available = get_job_state()
-            if state is None:
-                self.send_json(HTTPStatus.NOT_FOUND, {"message": "Tác vụ tạo audio không còn tồn tại."})
-                return
-            initial_buffer = min(3, total_chunks) if total_chunks else 0
-            if initial_buffer and all(index in available for index in range(initial_buffer)):
-                break
-            if state == "failed":
-                with CHUNK_JOBS_LOCK:
-                    message = CHUNK_JOBS.get(job_id, {}).get("message", "Tạo audio thất bại.")
-                self.send_json(HTTPStatus.BAD_GATEWAY, {"message": message})
-                return
-            if state == "completed":
-                if total_chunks == 0:
-                    self.send_json(HTTPStatus.BAD_GATEWAY, {"message": "Không có đoạn audio nào được tạo."})
-                    return
-                break
-            time.sleep(0.2)
-
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "audio/mpeg")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Transfer-Encoding", "chunked")
-        self.send_header("Connection", "close")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.close_connection = True
-
-        try:
-            for chunk_index in range(total_chunks):
-                while True:
-                    state, latest_total, available = get_job_state()
-                    if chunk_index in available:
-                        break
-                    if state in ("failed", "completed") or latest_total < total_chunks:
-                        return
-                    time.sleep(0.2)
-
-                connection = get_connection()
-                cursor = None
-                try:
-                    cursor = connection.cursor()
-                    cursor.execute(
-                        "SELECT audio_data FROM audio_chunks "
-                        "WHERE chapter_audio_id = %s AND chunk_index = %s",
-                        (cache_id, chunk_index),
-                    )
-                    row = cursor.fetchone()
-                finally:
-                    if cursor:
-                        cursor.close()
-                    connection.close()
-                if not row or not row[0]:
-                    return
-
-                audio = row[0]
-                self.wfile.write(f"{len(audio):X}\r\n".encode("ascii"))
-                self.wfile.write(audio)
-                self.wfile.write(b"\r\n")
-                self.wfile.flush()
-
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.flush()
-        except (BrokenPipeError, ConnectionResetError, ConnectionError):
-            return
 
     def list_stories(self):
         connection = get_connection()
