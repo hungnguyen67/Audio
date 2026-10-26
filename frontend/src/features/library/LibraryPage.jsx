@@ -3,14 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchStories } from '../../entities/stories/storiesSlice';
 import { Pagination } from '../../components/Pagination';
+import { usePlayer } from '../player/usePlayer';
 
 export function LibraryPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { items: stories, status, error } = useSelector((state) => state.stories);
+  const { current } = usePlayer();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const visibleStories = stories.slice((page - 1) * pageSize, page * pageSize);
+  const orderedStories = current
+    ? [
+        ...stories.filter((story) => story.id === current.storyId),
+        ...stories.filter((story) => story.id !== current.storyId),
+      ]
+    : stories;
+  const visibleStories = orderedStories.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [current?.storyId]);
 
   useEffect(() => {
     if (status === 'idle') dispatch(fetchStories());
