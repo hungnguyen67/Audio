@@ -1,5 +1,5 @@
 import { Link, useMatch } from "react-router-dom";
-import { Minus } from "lucide-react";
+import { X } from "lucide-react";
 import { AudioControls } from "./AudioControls";
 import { usePlayer } from "./usePlayer";
 
@@ -26,7 +26,7 @@ export function MiniPlayer() {
         aria-label="Ẩn trình phát mini"
         title="Ẩn trình phát"
       >
-        <Minus size={19} strokeWidth={2.4} aria-hidden="true" />
+        <X size={18} strokeWidth={2} aria-hidden="true" />
       </button>
       <AudioControls />
     </section>

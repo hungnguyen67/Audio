@@ -162,21 +162,20 @@
 .mini-player-close {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: #334155;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 50%;
+  background: transparent;
+  border: 0;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
 .mini-player-close:hover {
-  color: var(--text);
-  background: #e2e8f0;
-  border-color: #cbd5e1;
+  color: var(--link);
+  background: var(--surface-2);
+  border-radius: 6px;
 }
 
 .mini-player-close:focus-visible {
