@@ -3,15 +3,31 @@ import { Pause, Play, Volume2 } from "lucide-react";
 import { usePlayer } from "./usePlayer";
 
 function useAudioTime(audio) {
-  const [time, setTime] = useState({ currentTime: 0, duration: 0, paused: true });
+  const [time, setTime] = useState({ currentTime: 0, duration: 0, paused: true, live: false, ready: false });
   useEffect(() => {
-    const sync = () =>
+    const sync = () => {
+      const hasDuration = Number.isFinite(audio.duration) && audio.duration > 0;
       setTime({
         currentTime: audio.currentTime || 0,
-        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        duration: hasDuration ? audio.duration : 0,
         paused: audio.paused,
+        live: audio.duration === Infinity && audio.readyState >= 2,
+        ready: audio.readyState >= 2,
       });
-    const events = ["timeupdate", "durationchange", "loadedmetadata", "play", "pause", "emptied", "seeked"];
+    };
+    const events = [
+      "timeupdate",
+      "durationchange",
+      "loadedmetadata",
+      "loadeddata",
+      "canplay",
+      "playing",
+      "waiting",
+      "play",
+      "pause",
+      "emptied",
+      "seeked",
+    ];
     events.forEach((name) => audio.addEventListener(name, sync));
     sync();
     return () => events.forEach((name) => audio.removeEventListener(name, sync));
@@ -29,8 +45,7 @@ function formatTime(seconds) {
 
 export function AudioControls() {
   const { audio } = usePlayer();
-  const { currentTime, duration, paused } = useAudioTime(audio);
-  const ready = duration > 0;
+  const { currentTime, duration, paused, live, ready } = useAudioTime(audio);
 
   const togglePlay = () => {
     if (audio.paused) audio.play().catch(() => {});
@@ -59,14 +74,14 @@ export function AudioControls() {
           style={{
             "--range-progress": `${duration ? (currentTime / duration) * 100 : 0}%`,
           }}
-          disabled={!ready}
+          disabled={!ready || duration <= 0}
           aria-label="Thanh tua"
           onChange={(event) => {
             audio.currentTime = Number(event.target.value);
           }}
         />
         <span className="audio-time">
-          {formatTime(currentTime)} / {formatTime(duration)}
+          {formatTime(currentTime)} / {live ? "LIVE" : formatTime(duration)}
         </span>
       </div>
     </div>
@@ -94,13 +109,15 @@ export function AudioVolume() {
 }
 
 export function SeekButtons() {
-  const { seekBy } = usePlayer();
+  const { audio, seekBy } = usePlayer();
+  const { duration } = useAudioTime(audio);
+  const canSeek = duration > 0;
   return (
     <div className="audio-seek-controls" aria-label="Điều khiển tua audio">
-      <button type="button" onClick={() => seekBy(-10)} aria-label="Lùi 10 giây" title="Lùi 10 giây">
+      <button type="button" onClick={() => seekBy(-10)} disabled={!canSeek} aria-label="Lùi 10 giây" title="Lùi 10 giây">
         −10s
       </button>
-      <button type="button" onClick={() => seekBy(10)} aria-label="Tiến 10 giây" title="Tiến 10 giây">
+      <button type="button" onClick={() => seekBy(10)} disabled={!canSeek} aria-label="Tiến 10 giây" title="Tiến 10 giây">
         +10s
       </button>
     </div>

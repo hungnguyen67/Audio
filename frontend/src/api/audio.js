@@ -6,4 +6,5 @@ export const audioApi = {
       method: "POST",
     }),
   getJob: (jobId) => requestJson(`/api/audio-jobs/${jobId}`),
+  streamUrl: (jobId) => `/api/audio-job-streams/${jobId}`,
 };

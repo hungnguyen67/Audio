@@ -2,7 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import { useSelector } from "react-redux";
 import { progressApi } from "../../api/progress";
 import { selectStoryById } from "../../entities/stories/selectors";
-import { resolveAudioUrl } from "./audioJob";
+import { monitorAudioJob, resolveAudioUrl } from "./audioJob";
 import { IDLE_STATUS } from "./constants";
 import { usePlaybackPersistence } from "./usePlaybackPersistence";
 import { usePlaybackSettings } from "./usePlaybackSettings";
@@ -72,9 +72,21 @@ export function PlayerProvider({ children }) {
         const saved = await progressApi.getPlaybackState(target.id);
         signal.throwIfAborted();
         latest.current.settings.apply(saved);
-        const url = await resolveAudioUrl(target.id, saved.voice, { signal, onStatus: setStatus });
-        setStatus("Đang phát toàn bộ tập...");
-        const started = await loadAndPlay(audio, url, saved.positionSeconds || 0, signal);
+        const source = await resolveAudioUrl(target.id, saved.voice, { signal });
+        if (source.jobId) {
+          setStatus("Đang chuẩn bị audio để phát liền mạch...");
+          monitorAudioJob(source.jobId, { signal, onProgress: setStatus })
+            .then(() => {
+              if (!signal.aborted) setStatus("Đã tạo xong audio · tiếp tục phát");
+            })
+            .catch((monitorError) => {
+              if (!signal.aborted) setStatus(`Tạo audio bị gián đoạn: ${monitorError.message}`);
+            });
+        } else {
+          setStatus("Đang phát toàn bộ tập...");
+        }
+        const startAt = source.jobId ? 0 : saved.positionSeconds || 0;
+        const started = await loadAndPlay(audio, source.url, startAt, signal);
         if (started) loadedChapterIdRef.current = target.id;
       } catch (error) {
         if (!signal.aborted) setStatus(error.message);
