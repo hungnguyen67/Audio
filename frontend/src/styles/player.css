@@ -53,7 +53,13 @@
 .audio-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: linear-gradient(
+    to right,
+    var(--link) 0%,
+    var(--link) var(--range-progress),
+    #cbd5e1 var(--range-progress),
+    #cbd5e1 100%
+  );
 }
 
 .audio-range::-webkit-slider-thumb {
@@ -129,11 +135,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px 14px;
-  width: min(420px, calc(100vw - 40px));
-  padding: 16px;
+  gap: 8px 10px;
+  width: min(360px, calc(100vw - 40px));
+  padding: 12px;
   border: 1px solid #dbe4f0;
-  border-radius: 16px;
+  border-radius: 12px;
   background: linear-gradient(145deg, #fff 65%, #f7faff);
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07);
 }
@@ -141,7 +147,7 @@
 .mini-player-title {
   overflow: hidden;
   color: #172033;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1.4;
   text-decoration: none;
@@ -156,8 +162,8 @@
 .mini-player-close {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   color: #334155;
   background: #f8fafc;
@@ -183,18 +189,46 @@
   grid-column: 1 / -1;
 }
 
+.mini-player .audio-controls {
+  gap: 8px;
+}
+
+.mini-player .audio-time {
+  font-size: 10.5px;
+}
+
 .mini-player .audio-actions-row {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: 0;
 }
 
+.mini-player .audio-volume {
+  flex: 0 0 144px;
+  min-width: 0;
+  gap: 6px;
+  margin-top: 0;
+}
+
+.mini-player .audio-volume svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.mini-player .audio-volume .audio-range {
+  width: 112px;
+  max-width: 112px;
+}
+
 .mini-player .audio-seek-controls button {
-  min-width: 60px;
-  min-height: 34px;
-  padding: 6px 11px;
+  min-width: 50px;
+  min-height: 30px;
+  padding: 5px 8px;
   border-color: #dbe4f0;
-  border-radius: 9px;
+  border-radius: 7px;
   background: #f8fafc;
 }
 
@@ -203,7 +237,15 @@
     right: 12px;
     bottom: 12px;
     width: calc(100vw - 24px);
-    padding: 13px;
-    border-radius: 14px;
+    padding: 11px;
+  }
+
+  .mini-player .audio-volume .audio-range {
+    width: 96px;
+    max-width: 96px;
+  }
+
+  .mini-player .audio-volume {
+    flex-basis: 128px;
   }
 }

@@ -56,6 +56,9 @@ export function AudioControls() {
           max={duration || 0}
           step="1"
           value={Math.min(currentTime, duration || 0)}
+          style={{
+            "--range-progress": `${duration ? (currentTime / duration) * 100 : 0}%`,
+          }}
           disabled={!ready}
           aria-label="Thanh tua"
           onChange={(event) => {
@@ -82,6 +85,7 @@ export function AudioVolume() {
         max="1"
         step="0.05"
         value={settings.volume}
+        style={{ "--range-progress": `${settings.volume * 100}%` }}
         aria-label="Âm lượng"
         onChange={(event) => settings.setVolume(Number(event.target.value))}
       />

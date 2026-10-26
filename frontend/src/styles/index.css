@@ -1357,6 +1357,51 @@ body {
   border-bottom: none;
 }
 
+.ch-sub-item input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  flex: 0 0 14px;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.ch-sub-item input[type="checkbox"]::after {
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  content: "";
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.12s ease;
+}
+
+.ch-sub-item input[type="checkbox"]:checked {
+  border-color: var(--link);
+  background: var(--link);
+}
+
+.ch-sub-item input[type="checkbox"]:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.ch-sub-item input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgb(37 99 235 / 25%);
+  outline-offset: 2px;
+}
+
+.ch-sub-item input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .ch-sub-edit-title {
   flex: 1;
   min-width: 0;
