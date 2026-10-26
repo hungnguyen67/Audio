@@ -47,7 +47,7 @@ export function AudioControls() {
           disabled={!ready}
           aria-label={paused ? "Phát" : "Tạm dừng"}
         >
-          {paused ? <Play size={16} fill="currentColor" /> : <Pause size={16} fill="currentColor" />}
+          {paused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
         </button>
         <input
           className="audio-range"
