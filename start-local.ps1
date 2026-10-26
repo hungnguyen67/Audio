@@ -81,23 +81,34 @@ $backendPort = 3001
 $frontendPort = 3000
 $backendUrl = "http://127.0.0.1:$backendPort/api/stories"
 $frontendUrl = "http://127.0.0.1:$frontendPort/"
-$shellExecutable = (Get-Process -Id $PID).Path
+$serverJobs = @()
 
+try {
 $backendListeners = Get-ListeningProcessIds -Port $backendPort
 if ($backendListeners.Count -gt 0) {
     Test-Endpoint -Url $backendUrl -Name 'Backend'
     Write-Host "Backend is already running at http://127.0.0.1:$backendPort."
 } else {
-    $backendCommand = 'Set-Location -LiteralPath {0}; & {1} -m app.main' -f `
-        (ConvertTo-PowerShellLiteral $backendPath), `
-        (ConvertTo-PowerShellLiteral $pythonExecutable)
-    Start-Process -FilePath $shellExecutable `
-        -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $backendCommand) `
-        -WorkingDirectory $backendPath
-    Write-Host 'Backend started in a new PowerShell window.'
+    $backendJob = Start-Job -Name 'AudioBackend' -ArgumentList $backendPath, $pythonExecutable -ScriptBlock {
+        param($Path, $Python)
+        Set-Location -LiteralPath $Path
+        & $Python -m app.main
+        if ($LASTEXITCODE -ne 0) {
+            throw "Backend exited with code $LASTEXITCODE."
+        }
+    }
+    $serverJobs += $backendJob
+    Write-Host 'Backend started in this PowerShell window.'
 
     $backendReady = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        $jobOutput = Receive-Job -Job $backendJob -ErrorAction SilentlyContinue
+        foreach ($line in $jobOutput) {
+            Write-Host $line
+        }
+        if ($backendJob.State -ne 'Running') {
+            throw "Backend stopped before becoming ready. Check the output above for errors."
+        }
         try {
             $response = Invoke-WebRequest -Uri $backendUrl -UseBasicParsing -TimeoutSec 2
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
@@ -118,15 +129,26 @@ if ($frontendListeners.Count -gt 0) {
     Test-Endpoint -Url $frontendUrl -Name 'Frontend'
     Write-Host "Frontend is already running at $frontendUrl."
 } else {
-    $frontendCommand = 'Set-Location -LiteralPath {0}; npm run dev' -f `
-        (ConvertTo-PowerShellLiteral $frontendPath)
-    Start-Process -FilePath $shellExecutable `
-        -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $frontendCommand) `
-        -WorkingDirectory $frontendPath
-    Write-Host 'Frontend started in a new PowerShell window.'
+    $frontendJob = Start-Job -Name 'AudioFrontend' -ArgumentList $frontendPath -ScriptBlock {
+        param($Path)
+        Set-Location -LiteralPath $Path
+        npm run dev
+        if ($LASTEXITCODE -ne 0) {
+            throw "Frontend exited with code $LASTEXITCODE."
+        }
+    }
+    $serverJobs += $frontendJob
+    Write-Host 'Frontend started in this PowerShell window.'
 
     $frontendReady = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        $jobOutput = Receive-Job -Job $frontendJob -ErrorAction SilentlyContinue
+        foreach ($line in $jobOutput) {
+            Write-Host $line
+        }
+        if ($frontendJob.State -ne 'Running') {
+            throw "Frontend stopped before becoming ready. Check the output above for errors."
+        }
         try {
             $response = Invoke-WebRequest -Uri $frontendUrl -UseBasicParsing -TimeoutSec 2
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
@@ -144,4 +166,30 @@ if ($frontendListeners.Count -gt 0) {
 
 Write-Host ''
 Write-Host "Audio Story Reader is ready: $frontendUrl"
-Write-Host 'Keep both server windows open while using the app.'
+if ($serverJobs.Count -gt 0) {
+    Write-Host 'Both servers are running in this window. Press Ctrl+C to stop them.'
+    while (@($serverJobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
+        foreach ($job in $serverJobs) {
+            $jobOutput = Receive-Job -Job $job -ErrorAction SilentlyContinue
+            foreach ($line in $jobOutput) {
+                Write-Host $line
+            }
+        }
+
+        $stoppedJob = $serverJobs | Where-Object { $_.State -ne 'Running' } | Select-Object -First 1
+        if ($stoppedJob) {
+            $jobOutput = Receive-Job -Job $stoppedJob -ErrorAction SilentlyContinue
+            foreach ($line in $jobOutput) {
+                Write-Host $line
+            }
+            throw "$($stoppedJob.Name) stopped unexpectedly."
+        }
+        Start-Sleep -Seconds 1
+    }
+}
+} finally {
+    if ($serverJobs.Count -gt 0) {
+        Stop-Job -Job $serverJobs -ErrorAction SilentlyContinue
+        Remove-Job -Job $serverJobs -Force -ErrorAction SilentlyContinue
+    }
+}
