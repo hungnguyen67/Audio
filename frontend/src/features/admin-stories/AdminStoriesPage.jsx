@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { toast } from "../../components/Toast";
@@ -46,7 +45,7 @@ export function AdminStoriesPage() {
           </p>
         </div>
         <button className="btn btn-dark" onClick={editor.actions.openNew}>
-          <Plus size={16} /> Tạo truyện
+          Tạo truyện
         </button>
       </div>
 
