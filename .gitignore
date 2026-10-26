@@ -11,3 +11,4 @@ backend/google-credentials.json
 *.out
 *.log
 backend/logs/
+start-local.ps1

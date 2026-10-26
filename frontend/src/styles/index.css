@@ -227,6 +227,27 @@ body {
   margin-bottom: 24px;
 }
 
+.stories-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 36px 20px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.stories-empty-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.stories-empty-state p {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .section-card:has(.pagination-bar) {
   overflow: visible;
 }

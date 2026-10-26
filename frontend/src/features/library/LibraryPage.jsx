@@ -73,22 +73,27 @@ export function LibraryPage() {
           ))}
 
           {!visibleStories.length && (
-            <div className={`library-empty${error ? ' has-error' : ''}`} role={error ? 'alert' : 'status'}>
-              {error
-                ? error
-                : status === 'loading'
-                  ? 'Đang tải thư viện truyện...'
-                  : 'Thư viện chưa có truyện nào.'}
-            </div>
+            error || status === 'loading' || status === 'idle' ? (
+              <div className={`library-empty${error ? ' has-error' : ''}`} role={error ? 'alert' : 'status'}>
+                {error || 'Đang tải thư viện truyện...'}
+              </div>
+            ) : (
+              <div className="stories-empty-state" role="status">
+                <div className="stories-empty-title">Thư viện chưa có truyện nào</div>
+                <p>Truyện được thêm vào hệ thống sẽ xuất hiện tại đây để bạn chọn và bắt đầu nghe.</p>
+              </div>
+            )
           )}
         </div>
-        <Pagination
-          total={stories.length}
-          page={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-        />
+        {stories.length > 0 && (
+          <Pagination
+            total={stories.length}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
+        )}
       </div>
     </section>
   );
