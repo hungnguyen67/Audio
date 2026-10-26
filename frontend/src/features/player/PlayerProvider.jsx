@@ -47,6 +47,7 @@ export function PlayerProvider({ children }) {
   const streamingJobRef = useRef(null);
   const playbackStartedRef = useRef(false);
   const playbackErrorRef = useRef(false);
+  const generationStatusRef = useRef(null);
   const persistence = usePlaybackPersistence({ audio, loadedChapterIdRef, settings });
 
   const latest = useRef({});
@@ -68,6 +69,7 @@ export function PlayerProvider({ children }) {
       streamingJobRef.current = null;
       playbackStartedRef.current = false;
       playbackErrorRef.current = false;
+      generationStatusRef.current = null;
       audio.pause();
       loadedChapterIdRef.current = null;
       setCurrent({ storyId, chapterId: target.id });
@@ -85,7 +87,14 @@ export function PlayerProvider({ children }) {
           const { feedPromise } = await startProgressiveAudio(audio, source.jobId, {
             signal,
             startAt: saved.positionSeconds || 0,
-            onProgress: setStatus,
+            onProgress: (progress) => {
+              generationStatusRef.current = `Chương ${target.number} · ${progress}`;
+              setStatus(
+                playbackStartedRef.current
+                  ? `Đang phát · ${generationStatusRef.current}`
+                  : generationStatusRef.current,
+              );
+            },
             onError: (streamError) => {
               playbackErrorRef.current = true;
               setStatus(`Audio đã tạo một phần; không thể tiếp tục tạo: ${streamError.message}`);
@@ -95,7 +104,8 @@ export function PlayerProvider({ children }) {
             .then(() => {
               if (!signal.aborted && !playbackErrorRef.current) {
                 streamingJobRef.current = null;
-                setStatus("Đã tạo xong audio · tiếp tục phát");
+                generationStatusRef.current = `Đã tạo xong audio chương ${target.number}`;
+                setStatus(`Đang phát · ${generationStatusRef.current}`);
               }
             })
             .catch((streamError) => {
@@ -124,6 +134,7 @@ export function PlayerProvider({ children }) {
     streamingJobRef.current = null;
     playbackStartedRef.current = false;
     playbackErrorRef.current = false;
+    generationStatusRef.current = null;
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
@@ -172,7 +183,11 @@ export function PlayerProvider({ children }) {
     const onPlaying = () => {
       playbackStartedRef.current = true;
       if (streamingJobRef.current) {
-        setStatus("Đang phát audio · tiếp tục tạo trong nền");
+        setStatus(
+          generationStatusRef.current
+            ? `Đang phát · ${generationStatusRef.current}`
+            : "Đang phát audio · đang chờ tiến độ tạo",
+        );
       }
     };
     audio.addEventListener("ended", onEnded);

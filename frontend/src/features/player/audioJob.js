@@ -27,7 +27,7 @@ function describeProgress(job) {
   if (!job.totalChunks) return "Đang tạo audio...";
   const done = job.completedCount ?? 0;
   const percent = Math.round((done / job.totalChunks) * 100);
-  return `Đang tạo audio ${done}/${job.totalChunks} đoạn (${percent}%)`;
+  return `đã xong ${done}/${job.totalChunks} đoạn (${percent}%)`;
 }
 
 function waitForEvent(target, eventName, signal) {

@@ -65,8 +65,17 @@ def auto_generate_missing_audio():
                     "AND failed_ca.content_hash = SHA2(c.content, 256) "
                     "AND failed_ca.status = 'error' "
                     f"AND failed_ca.updated_at >= NOW() - INTERVAL {AUTO_AUDIO_RETRY_MINUTES} MINUTE) "
+                    "AND NOT EXISTS ("
+                    "SELECT 1 FROM chapters earlier "
+                    "LEFT JOIN chapter_audios earlier_ca ON earlier_ca.chapter_id = earlier.id "
+                    "AND earlier_ca.voice = %s "
+                    "AND earlier_ca.content_hash = SHA2(earlier.content, 256) "
+                    "AND earlier_ca.status = 'ready' "
+                    "WHERE earlier.story_id = c.story_id "
+                    "AND earlier.chapter_number < c.chapter_number "
+                    "AND earlier_ca.id IS NULL) "
                     "ORDER BY c.created_at, c.chapter_number LIMIT 1",
-                    (f"edge:{VOICE}", f"edge:{VOICE}"),
+                    (f"edge:{VOICE}", f"edge:{VOICE}", f"edge:{VOICE}"),
                 )
                 chapter = cursor.fetchone()
             finally:
