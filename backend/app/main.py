@@ -136,6 +136,10 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 public_job = {
                     key: value for key, value in job.items() if key != "cacheId"
                 } if job else None
+                if public_job:
+                    public_job["activeChunks"] = [
+                        dict(chunk) for chunk in job.get("activeChunks", [])
+                    ]
             self.send_json(HTTPStatus.OK, public_job or {"status": "not_found"})
             return
 
@@ -583,6 +587,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     "completedChunks": [],
                     "completedCount": 0,
                     "totalChunks": 0,
+                    "activeChunks": [],
                     "voice": voice,
                 }
             queued_at = time.perf_counter()
@@ -684,6 +689,13 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 received_audio_bytes = 0
                 next_progress_bytes = 1024 * 1024
                 chunk_started_at = time.perf_counter()
+                active_chunk = {
+                    "index": index,
+                    "attempt": 1,
+                    "receivedBytes": 0,
+                }
+                with CHUNK_JOBS_LOCK:
+                    CHUNK_JOBS[job_id]["activeChunks"].append(active_chunk)
                 print(
                     f"[audio {job_id}] Đang tạo đoạn {index + 1}/{len(chunks)} "
                     f"({len(text):,} ký tự)...",
@@ -693,6 +705,8 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 def report_audio_progress(byte_count):
                     nonlocal received_audio_bytes, next_progress_bytes
                     received_audio_bytes += byte_count
+                    with CHUNK_JOBS_LOCK:
+                        active_chunk["receivedBytes"] = received_audio_bytes
                     if received_audio_bytes >= next_progress_bytes:
                         print(
                             f"[audio {job_id}] Đoạn {index + 1}/{len(chunks)} "
@@ -701,42 +715,49 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         )
                         next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
 
-                for attempt in range(3):
-                    attempt_started_at = time.perf_counter()
-                    try:
-                        received_audio_bytes = 0
-                        next_progress_bytes = 1024 * 1024
-                        audio = await asyncio.get_running_loop().run_in_executor(
-                            EDGE_TTS_EXECUTOR,
-                            asyncio.run,
-                            self.synthesize(text, voice, report_audio_progress),
-                        )
-                        print(
-                            f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
-                            f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
-                            f"{attempt} lần thử lại).",
-                            flush=True,
-                        )
-                        return index, audio, time.perf_counter() - chunk_started_at, attempt
-                    except Exception as error:
-                        last_error = (
-                            RuntimeError(
-                                f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
+                try:
+                    for attempt in range(3):
+                        with CHUNK_JOBS_LOCK:
+                            active_chunk["attempt"] = attempt + 1
+                            active_chunk["receivedBytes"] = 0
+                        attempt_started_at = time.perf_counter()
+                        try:
+                            received_audio_bytes = 0
+                            next_progress_bytes = 1024 * 1024
+                            audio = await asyncio.get_running_loop().run_in_executor(
+                                EDGE_TTS_EXECUTOR,
+                                asyncio.run,
+                                self.synthesize(text, voice, report_audio_progress),
                             )
-                            if isinstance(error, asyncio.TimeoutError)
-                            else error
-                        )
-                        print(
-                            f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                            f"(lần {attempt + 1}/3, {type(last_error).__name__}, "
-                            f"{time.perf_counter() - attempt_started_at:.2f}s, "
-                            f"{received_audio_bytes:,} byte): {last_error}",
-                            flush=True,
-                        )
-                        if attempt < 2:
-                            await asyncio.sleep(2 ** (attempt + 1))
-                assert last_error is not None
-                raise last_error
+                            print(
+                                f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
+                                f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
+                                f"{attempt} lần thử lại).",
+                                flush=True,
+                            )
+                            return index, audio, time.perf_counter() - chunk_started_at, attempt
+                        except Exception as error:
+                            last_error = (
+                                RuntimeError(
+                                    f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
+                                )
+                                if isinstance(error, asyncio.TimeoutError)
+                                else error
+                            )
+                            print(
+                                f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
+                                f"(lần {attempt + 1}/3, {type(last_error).__name__}, "
+                                f"{time.perf_counter() - attempt_started_at:.2f}s, "
+                                f"{received_audio_bytes:,} byte): {last_error}",
+                                flush=True,
+                            )
+                            if attempt < 2:
+                                await asyncio.sleep(2 ** (attempt + 1))
+                    assert last_error is not None
+                    raise last_error
+                finally:
+                    with CHUNK_JOBS_LOCK:
+                        CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
 
         tasks = [
             asyncio.create_task(synth_one(index, text))

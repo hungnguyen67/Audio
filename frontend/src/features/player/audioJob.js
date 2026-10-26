@@ -29,7 +29,20 @@ function describeProgress(job) {
   if (!job.totalChunks) return "Đang tạo audio...";
   const done = job.completedCount ?? 0;
   const percent = Math.round((done / job.totalChunks) * 100);
-  return `đã xong ${done}/${job.totalChunks} đoạn (${percent}%)`;
+  const activeChunks = job.activeChunks ?? [];
+  const activeStatus = activeChunks.length
+    ? ` · đang tạo ${activeChunks
+        .map((chunk) => {
+          const number = chunk.index + 1;
+          const retry = chunk.attempt > 1 ? ` (thử lại ${chunk.attempt}/3)` : "";
+          const received = chunk.receivedBytes
+            ? ` · nhận ${Math.round(chunk.receivedBytes / 1024)} KB`
+            : "";
+          return `đoạn ${number}${retry}${received}`;
+        })
+        .join(", ")}`
+    : "";
+  return `đã xong ${done}/${job.totalChunks} đoạn (${percent}%)${activeStatus}`;
 }
 
 function waitForEvent(target, eventName, signal) {
