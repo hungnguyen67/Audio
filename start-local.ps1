@@ -190,6 +190,7 @@ Write-Host ''
 Write-Host "Audio Story Reader is ready: $frontendUrl"
 if ($serverJobs.Count -gt 0) {
     Write-Host 'Both servers are running in this window. Press Ctrl+C to stop them.'
+    Write-Host 'Backend audio logs show the chapter number and title as each chapter starts, completes, or fails.'
     while (@($serverJobs | Where-Object { $_.State -eq 'Running' }).Count -gt 0) {
         foreach ($job in $serverJobs) {
             $jobOutput = Receive-Job -Job $job -ErrorAction SilentlyContinue

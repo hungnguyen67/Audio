@@ -53,7 +53,8 @@ def auto_generate_missing_audio():
             try:
                 cursor = connection.cursor()
                 cursor.execute(
-                    "SELECT c.id FROM chapters c "
+                    "SELECT c.id, c.chapter_number, c.title, s.title "
+                    "FROM chapters c JOIN stories s ON s.id = c.story_id "
                     "LEFT JOIN chapter_audios ca ON ca.chapter_id = c.id "
                     "AND ca.voice = %s AND ca.content_hash = SHA2(c.content, 256) "
                     "AND ca.status = 'ready' "
@@ -81,7 +82,9 @@ def auto_generate_missing_audio():
                 with urlopen(request, timeout=10) as response:
                     result = json.loads(response.read().decode("utf-8"))
                 print(
-                    f"[auto audio] Chapter {chapter[0]} queued: {result.get('status', 'unknown')}.",
+                    f'[auto audio] Đã xếp hàng chương {chapter[1]} "{chapter[2]}" '
+                    f'của truyện "{chapter[3]}" (ID: {chapter[0]}): '
+                    f'{result.get("status", "unknown")}.',
                     flush=True,
                 )
         except Exception as error:
