@@ -1,6 +1,6 @@
 import { Link, useMatch } from "react-router-dom";
 import { Minus } from "lucide-react";
-import { AudioControls, AudioVolume, SeekButtons } from "./AudioControls";
+import { AudioControls } from "./AudioControls";
 import { usePlayer } from "./usePlayer";
 
 /** Hiện ở mọi trang trừ trang truyện (nơi đã có PlayerCard). */
@@ -29,10 +29,6 @@ export function MiniPlayer() {
         <Minus size={19} strokeWidth={2.4} aria-hidden="true" />
       </button>
       <AudioControls />
-      <div className="audio-actions-row">
-        <AudioVolume />
-        <SeekButtons />
-      </div>
     </section>
   );
 }
