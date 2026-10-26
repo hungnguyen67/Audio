@@ -87,11 +87,34 @@ try {
 $backendListeners = Get-ListeningProcessIds -Port $backendPort
 if ($backendListeners.Count -gt 0) {
     Test-Endpoint -Url $backendUrl -Name 'Backend'
-    Write-Host "Backend is already running at http://127.0.0.1:$backendPort."
-} else {
+    foreach ($processId in $backendListeners) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId"
+        if (-not $process -or $process.CommandLine -notmatch '(?:^|\s)-m\s+app\.main(?:\s|$)') {
+            throw "Port $backendPort is occupied by an unrecognized process (PID $processId); it was not stopped."
+        }
+
+        $runtimeInfo = Invoke-RestMethod -Uri "http://127.0.0.1:$backendPort/api/runtime-info" -TimeoutSec 3
+        if (-not $runtimeInfo.pythonExecutable -or
+            [System.IO.Path]::GetFullPath($runtimeInfo.pythonExecutable) -ne [System.IO.Path]::GetFullPath($process.ExecutablePath)) {
+            throw "The process on port $backendPort could not be verified as this project's backend; it was not stopped."
+        }
+
+        Write-Host "Restarting the existing Audio backend (PID $processId) so its logs appear below..."
+        Stop-Process -Id $processId -ErrorAction Stop
+    }
+
+    for ($attempt = 0; $attempt -lt 15 -and (Get-ListeningProcessIds -Port $backendPort).Count -gt 0; $attempt++) {
+        Start-Sleep -Seconds 1
+    }
+    if ((Get-ListeningProcessIds -Port $backendPort).Count -gt 0) {
+        throw "The existing backend did not release port $backendPort after stopping."
+    }
+}
+
     $backendJob = Start-Job -Name 'AudioBackend' -ArgumentList $backendPath, $pythonExecutable -ScriptBlock {
         param($Path, $Python)
         Set-Location -LiteralPath $Path
+        $env:PYTHONUNBUFFERED = '1'
         & $Python -m app.main
         if ($LASTEXITCODE -ne 0) {
             throw "Backend exited with code $LASTEXITCODE."
@@ -120,9 +143,8 @@ if ($backendListeners.Count -gt 0) {
         }
     }
     if (-not $backendReady) {
-        throw "Backend did not become ready at http://127.0.0.1:$backendPort. Check the backend PowerShell window for errors."
+        throw "Backend did not become ready at http://127.0.0.1:$backendPort. Check the output above for errors."
     }
-}
 
 $frontendListeners = Get-ListeningProcessIds -Port $frontendPort
 if ($frontendListeners.Count -gt 0) {
