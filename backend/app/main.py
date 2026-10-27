@@ -1,17 +1,18 @@
 import asyncio
 import hashlib
+import ipaddress
 import json
 import os
 import re
 import sys
 import threading
 import time
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 import edge_tts
 import mysql.connector
@@ -34,6 +35,47 @@ AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_SIZE = 1000
 EDGE_TTS_CHUNK_CONCURRENCY = 1
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
+DOUYIN_MEDIA_HOSTS = (
+    "douyin.com",
+    "douyinvod.com",
+    "douyinpic.com",
+    "byteimg.com",
+    "bytefcdn.com",
+    "ibytedtos.com",
+    "snssdk.com",
+    "bytedance.com",
+    "zjcdn.com",
+)
+DOUYIN_MAX_MEDIA_BYTES = 512 * 1024 * 1024
+DOUYIN_MAX_DURATION_SECONDS = 20 * 60
+
+
+def is_allowed_douyin_media_url(url):
+    try:
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        if parsed.scheme != "https" or not hostname or parsed.username or parsed.password:
+            return False
+        if parsed.port not in (None, 443):
+            return False
+        try:
+            ipaddress.ip_address(hostname)
+            return False
+        except ValueError:
+            pass
+        return any(hostname == domain or hostname.endswith(f".{domain}") for domain in DOUYIN_MEDIA_HOSTS)
+    except ValueError:
+        return False
+
+
+class DouyinMediaRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target_url = urljoin(req.full_url, newurl)
+        if not is_allowed_douyin_media_url(target_url):
+            raise ValueError("Đường dẫn chuyển hướng video không hợp lệ.")
+        return super().redirect_request(req, fp, code, msg, headers, target_url)
+
+
 def auto_generate_missing_audio():
     print(
         f"[auto audio] Background queue started; idle fallback check every {AUTO_AUDIO_INTERVAL_SECONDS}s.",
@@ -120,6 +162,18 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, self.list_stories())
             return
 
+        if path == "/api/saved-douyin-videos":
+            self.list_douyin_videos()
+            return
+        if path == "/api/saved-douyin-folders":
+            self.list_douyin_folders()
+            return
+
+        douyin_video_match = re.fullmatch(r"/api/saved-douyin-videos/([a-f0-9]{32})/media", path)
+        if douyin_video_match:
+            self.stream_douyin_video(douyin_video_match.group(1))
+            return
+
         if path == "/api/runtime-info":
             self.send_json(HTTPStatus.OK, {
                 "pythonExecutable": sys.executable,
@@ -180,6 +234,20 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.create_story()
             return
 
+        if path == "/api/saved-douyin-videos":
+            self.save_douyin_video()
+            return
+
+        if path == "/api/saved-douyin-videos/delete":
+            self.delete_douyin_videos()
+            return
+        if path == "/api/saved-douyin-folders":
+            self.create_douyin_folder()
+            return
+        if path == "/api/saved-douyin-videos/move":
+            self.move_douyin_videos()
+            return
+
         if path == "/api/chapters":
             self.save_chapter()
             return
@@ -231,6 +299,16 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.update_chapter(chapter_match.group(1))
 
     def do_DELETE(self):
+        douyin_folder_match = re.fullmatch(r"/api/saved-douyin-folders/([a-f0-9]{32})", urlsplit(self.path).path)
+        if douyin_folder_match:
+            self.delete_douyin_folder(douyin_folder_match.group(1))
+            return
+
+        douyin_video_match = re.fullmatch(r"/api/saved-douyin-videos/([a-f0-9]{32})", urlsplit(self.path).path)
+        if douyin_video_match:
+            self.delete_douyin_video(douyin_video_match.group(1))
+            return
+
         chapter_match = re.fullmatch(r"/api/chapters/([a-f0-9]+)", self.path)
         if chapter_match:
             self.delete_chapter(chapter_match.group(1))
@@ -975,6 +1053,390 @@ class AudioHandler(SimpleHTTPRequestHandler):
         connection.close()
         return stories
 
+    def list_douyin_videos(self):
+        connection = get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT id, folder_id AS folderId, aweme_id AS awemeId, title, author, cover_url AS cover, "
+            "duration_seconds AS duration, file_size AS fileSize, created_at AS createdAt "
+            "FROM douyin_videos ORDER BY created_at DESC"
+        )
+        videos = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        for video in videos:
+            video["createdAt"] = video["createdAt"].isoformat()
+            video["mediaUrl"] = f"/api/saved-douyin-videos/{video['id']}/media"
+        self.send_json(HTTPStatus.OK, videos)
+
+    def list_douyin_folders(self):
+        connection = get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT f.id, f.name, f.created_at AS createdAt, COUNT(v.id) AS videoCount "
+            "FROM douyin_folders f LEFT JOIN douyin_videos v ON v.folder_id = f.id "
+            "GROUP BY f.id, f.name, f.created_at ORDER BY f.name, f.created_at"
+        )
+        folders = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        for folder in folders:
+            folder["createdAt"] = folder["createdAt"].isoformat()
+        self.send_json(HTTPStatus.OK, folders)
+
+    def create_douyin_folder(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 4096:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên thư mục không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            name = str(payload.get("name", "")).strip()
+            if not name or len(name) > 100:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên thư mục phải có từ 1 đến 100 ký tự."})
+                return
+
+            folder_id = uuid.uuid4().hex
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                "INSERT INTO douyin_folders (id, name) VALUES (%s, %s)",
+                (folder_id, name),
+            )
+            connection.commit()
+            cursor.close()
+            connection.close()
+            self.send_json(
+                HTTPStatus.CREATED,
+                {
+                    "id": folder_id,
+                    "name": name,
+                    "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "videoCount": 0,
+                },
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Tên thư mục không hợp lệ: {error}"})
+        except mysql.connector.Error as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+
+    def delete_douyin_folder(self, folder_id):
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute("DELETE FROM douyin_folders WHERE id = %s", (folder_id,))
+        deleted = cursor.rowcount
+        connection.commit()
+        cursor.close()
+        connection.close()
+        if not deleted:
+            self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục cần xóa."})
+            return
+        self.send_json(HTTPStatus.OK, {"deleted": deleted})
+
+    def move_douyin_videos(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 16384:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Danh sách video cần di chuyển không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            ids = payload.get("ids") if isinstance(payload, dict) else None
+            folder_id = payload.get("folderId") if isinstance(payload, dict) else None
+            if (
+                not isinstance(ids, list)
+                or not ids
+                or len(ids) > 100
+                or any(not isinstance(video_id, str) or not re.fullmatch(r"[a-f0-9]{32}", video_id) for video_id in ids)
+                or (folder_id is not None and (not isinstance(folder_id, str) or not re.fullmatch(r"[a-f0-9]{32}", folder_id)))
+            ):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Chọn từ 1 đến 100 video hợp lệ."})
+                return
+
+            unique_ids = list(set(ids))
+            connection = get_connection()
+            cursor = connection.cursor()
+            if folder_id:
+                cursor.execute("SELECT id FROM douyin_folders WHERE id = %s", (folder_id,))
+                if not cursor.fetchone():
+                    cursor.close()
+                    connection.close()
+                    self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục đích."})
+                    return
+            placeholders = ", ".join(["%s"] * len(unique_ids))
+            cursor.execute(
+                f"UPDATE douyin_videos SET folder_id = %s WHERE id IN ({placeholders})",
+                (folder_id, *unique_ids),
+            )
+            moved = cursor.rowcount
+            connection.commit()
+            cursor.close()
+            connection.close()
+            self.send_json(HTTPStatus.OK, {"moved": moved})
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Danh sách video không hợp lệ: {error}"})
+        except mysql.connector.Error as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+
+    def save_douyin_video(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 65536:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Thông tin video không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Dữ liệu video không hợp lệ.")
+
+            media_url = str(payload.get("videoUrl", "")).strip()
+            aweme_id = str(payload.get("awemeId", "")).strip()[:128]
+            title = str(payload.get("title", "")).strip()[:1000]
+            author = str(payload.get("author", "")).strip()[:255]
+            cover_url = str(payload.get("cover", "")).strip()[:2048]
+            duration = int(payload.get("duration", 0) or 0)
+            folder_id = payload.get("folderId")
+            if not title or not media_url:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Thiếu thông tin video cần lưu."})
+                return
+            if duration < 1:
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"message": "Không xác định được thời lượng video nên không thể kiểm tra giới hạn 20 phút."},
+                )
+                return
+            if duration > DOUYIN_MAX_DURATION_SECONDS:
+                self.send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"message": "Chỉ hỗ trợ lưu video có thời lượng tối đa 20 phút."},
+                )
+                return
+            if folder_id is not None and (
+                not isinstance(folder_id, str) or not re.fullmatch(r"[a-f0-9]{32}", folder_id)
+            ):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Thư mục lưu video không hợp lệ."})
+                return
+            if not is_allowed_douyin_media_url(media_url):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Nguồn video không hợp lệ."})
+                return
+
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute("SELECT @@max_allowed_packet")
+            packet_limit = int(cursor.fetchone()[0])
+            cursor.close()
+            connection.close()
+            maximum_size = min(DOUYIN_MAX_MEDIA_BYTES, packet_limit - 1024 * 1024)
+            if maximum_size < 1:
+                self.send_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"message": "Giới hạn gói dữ liệu MySQL quá thấp để lưu video."},
+                )
+                return
+            maximum_size_mb = maximum_size // (1024 * 1024)
+            size_limit_message = f"Video vượt quá giới hạn lưu hiện tại: {maximum_size_mb} MB."
+
+            request = Request(
+                media_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+                    "Referer": "https://www.douyin.com/",
+                },
+            )
+            opener = build_opener(DouyinMediaRedirectHandler())
+            with opener.open(request, timeout=60) as response:
+                if not is_allowed_douyin_media_url(response.geturl()):
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Nguồn chuyển hướng video không hợp lệ."})
+                    return
+                content_type = response.headers.get_content_type().lower()
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > maximum_size:
+                    self.send_json(
+                        HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                        {"message": size_limit_message},
+                    )
+                    return
+
+                chunks = []
+                total_size = 0
+                while True:
+                    chunk = response.read(min(65536, maximum_size - total_size + 1))
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > maximum_size:
+                        self.send_json(
+                            HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                            {"message": size_limit_message},
+                        )
+                        return
+                    chunks.append(chunk)
+
+            media_data = b"".join(chunks)
+            is_mp4 = content_type in ("video/mp4", "application/mp4") or (
+                len(media_data) >= 8 and media_data[4:8] == b"ftyp"
+            )
+            if not is_mp4:
+                self.send_json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"message": "Nguồn tải về không phải video MP4."})
+                return
+            if not media_data:
+                self.send_json(HTTPStatus.BAD_GATEWAY, {"message": "Nguồn video trả về tệp rỗng."})
+                return
+
+            video_id = uuid.uuid4().hex
+            connection = get_connection()
+            cursor = connection.cursor()
+            if folder_id:
+                cursor.execute("SELECT id FROM douyin_folders WHERE id = %s", (folder_id,))
+                if not cursor.fetchone():
+                    cursor.close()
+                    connection.close()
+                    self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục lưu video."})
+                    return
+            if aweme_id and aweme_id != "unknown":
+                cursor.execute("SELECT id FROM douyin_videos WHERE aweme_id = %s LIMIT 1", (aweme_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.close()
+                    connection.close()
+                    self.send_json(
+                        HTTPStatus.CONFLICT,
+                        {"message": "Video này đã có trong thư viện.", "id": existing[0]},
+                    )
+                    return
+            cursor.execute(
+                "INSERT INTO douyin_videos "
+                "(id, folder_id, aweme_id, title, author, cover_url, duration_seconds, file_size, video_data) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (video_id, folder_id, aweme_id, title, author, cover_url, duration, len(media_data), media_data),
+            )
+            connection.commit()
+            cursor.close()
+            connection.close()
+            self.send_json(
+                HTTPStatus.CREATED,
+                {
+                    "id": video_id,
+                    "folderId": folder_id,
+                    "awemeId": aweme_id,
+                    "title": title,
+                    "author": author,
+                    "cover": cover_url,
+                    "duration": duration,
+                    "fileSize": len(media_data),
+                    "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "mediaUrl": f"/api/saved-douyin-videos/{video_id}/media",
+                },
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Dữ liệu video không hợp lệ: {error}"})
+        except OSError as error:
+            self.send_json(HTTPStatus.BAD_GATEWAY, {"message": f"Không tải được video từ nguồn: {error}"})
+        except mysql.connector.Error as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+
+    def stream_douyin_video(self, video_id):
+        range_header = self.headers.get("Range")
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT title, OCTET_LENGTH(video_data) FROM douyin_videos WHERE id = %s",
+            (video_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            connection.close()
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+
+        title, total_size = row
+        start = 0
+        end = total_size - 1
+        if range_header:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+            if not match or not any(match.groups()):
+                cursor.close()
+                connection.close()
+                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                return
+            range_start, range_end = match.groups()
+            if range_start:
+                start = int(range_start)
+                if range_end:
+                    end = min(int(range_end), total_size - 1)
+            else:
+                suffix_length = int(range_end)
+                start = max(total_size - suffix_length, 0)
+            if start >= total_size or start > end:
+                cursor.close()
+                connection.close()
+                self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                return
+
+        cursor.execute(
+            "SELECT SUBSTRING(video_data, %s, %s) FROM douyin_videos WHERE id = %s",
+            (start + 1, end - start + 1, video_id),
+        )
+        media_data = cursor.fetchone()[0]
+        cursor.close()
+        connection.close()
+
+        self.send_response(HTTPStatus.PARTIAL_CONTENT if range_header else HTTPStatus.OK)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(media_data)))
+        self.send_header("Content-Disposition", f'inline; filename="{quote(title[:100] or "video", safe="")}.mp4"')
+        if range_header:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{total_size}")
+        self.end_headers()
+        try:
+            self.wfile.write(media_data)
+        except ConnectionError:
+            pass
+
+    def delete_douyin_video(self, video_id):
+        connection = get_connection()
+        cursor = connection.cursor()
+        cursor.execute("DELETE FROM douyin_videos WHERE id = %s", (video_id,))
+        deleted = cursor.rowcount
+        connection.commit()
+        cursor.close()
+        connection.close()
+        if not deleted:
+            self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy video cần xóa."})
+            return
+        self.send_json(HTTPStatus.OK, {"deleted": deleted})
+
+    def delete_douyin_videos(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 16384:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Danh sách video cần xóa không hợp lệ."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            ids = payload.get("ids") if isinstance(payload, dict) else None
+            if (
+                not isinstance(ids, list)
+                or not ids
+                or len(ids) > 100
+                or any(not isinstance(video_id, str) or not re.fullmatch(r"[a-f0-9]{32}", video_id) for video_id in ids)
+            ):
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Chọn từ 1 đến 100 video hợp lệ để xóa."})
+                return
+
+            placeholders = ", ".join(["%s"] * len(set(ids)))
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute(f"DELETE FROM douyin_videos WHERE id IN ({placeholders})", tuple(set(ids)))
+            deleted = cursor.rowcount
+            connection.commit()
+            cursor.close()
+            connection.close()
+            self.send_json(HTTPStatus.OK, {"deleted": deleted})
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Danh sách video không hợp lệ: {error}"})
+        except mysql.connector.Error as error:
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+
     def create_story(self):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -1158,8 +1620,58 @@ def ensure_playback_tables():
     connection.close()
 
 
+def ensure_douyin_tables():
+    connection = get_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS douyin_folders ("
+        "id CHAR(32) NOT NULL PRIMARY KEY,"
+        "name VARCHAR(100) NOT NULL,"
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "INDEX idx_douyin_folders_name (name))"
+    )
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS douyin_videos ("
+        "id CHAR(32) NOT NULL PRIMARY KEY,"
+        "folder_id CHAR(32) NULL,"
+        "aweme_id VARCHAR(128) NOT NULL DEFAULT '',"
+        "title VARCHAR(1000) NOT NULL,"
+        "author VARCHAR(255) NOT NULL DEFAULT '',"
+        "cover_url VARCHAR(2048) NOT NULL DEFAULT '',"
+        "duration_seconds INT UNSIGNED NOT NULL DEFAULT 0,"
+        "file_size BIGINT UNSIGNED NOT NULL,"
+        "video_data LONGBLOB NOT NULL,"
+        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "INDEX idx_douyin_videos_created_at (created_at),"
+        "INDEX idx_douyin_videos_aweme_id (aweme_id),"
+        "INDEX idx_douyin_videos_folder_id (folder_id),"
+        "CONSTRAINT fk_douyin_videos_folder FOREIGN KEY (folder_id) "
+        "REFERENCES douyin_folders(id) ON DELETE SET NULL)"
+    )
+    cursor.execute("SHOW COLUMNS FROM douyin_videos LIKE 'folder_id'")
+    if not cursor.fetchone():
+        cursor.execute(
+            "ALTER TABLE douyin_videos ADD COLUMN folder_id CHAR(32) NULL, "
+            "ADD INDEX idx_douyin_videos_folder_id (folder_id)"
+        )
+    cursor.execute(
+        "SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS "
+        "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'douyin_videos' "
+        "AND CONSTRAINT_NAME = 'fk_douyin_videos_folder'"
+    )
+    if not cursor.fetchone():
+        cursor.execute(
+            "ALTER TABLE douyin_videos ADD CONSTRAINT fk_douyin_videos_folder "
+            "FOREIGN KEY (folder_id) REFERENCES douyin_folders(id) ON DELETE SET NULL"
+        )
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+
 if __name__ == "__main__":
     ensure_playback_tables()
+    ensure_douyin_tables()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "3001"))
     server = QuietThreadingHTTPServer((host, port), AudioHandler)

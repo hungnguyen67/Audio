@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchStories } from '../../entities/stories/storiesSlice';
-import { Pagination } from '../../components/Pagination';
-import { usePlayer } from '../player/usePlayer';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchStories } from "../../entities/stories/storiesSlice";
+import { Pagination } from "../../components/Pagination";
+import { usePlayer } from "../player/usePlayer";
 
 export function LibraryPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { items: stories, status, error } = useSelector((state) => state.stories);
+  const {
+    items: stories,
+    status,
+    error,
+  } = useSelector((state) => state.stories);
   const { current } = usePlayer();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -18,22 +22,27 @@ export function LibraryPage() {
         ...stories.filter((story) => story.id !== current.storyId),
       ]
     : stories;
-  const visibleStories = orderedStories.slice((page - 1) * pageSize, page * pageSize);
+  const visibleStories = orderedStories.slice(
+    (page - 1) * pageSize,
+    page * pageSize,
+  );
 
   useEffect(() => {
     setPage(1);
   }, [current?.storyId]);
 
   useEffect(() => {
-    if (status === 'idle') dispatch(fetchStories());
+    if (status === "idle") dispatch(fetchStories());
   }, [status, dispatch]);
 
   return (
     <section className="library-page">
       <div className="page-hero library-page-hero">
         <div>
-          <h1 className="hero-title">Thư viện truyện</h1>
-          <p className="hero-sub">Chọn một truyện để xem chương và bắt đầu nghe.</p>
+          <h1 className="hero-title">Khám phá truyện</h1>
+          <p className="hero-sub">
+            Chọn truyện để xem danh sách chương và nghe ngay.
+          </p>
         </div>
       </div>
 
@@ -60,30 +69,39 @@ export function LibraryPage() {
               tabIndex={0}
               onClick={() => navigate(`/story/${story.id}`)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
+                if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   navigate(`/story/${story.id}`);
                 }
               }}
             >
-              <span className="row-num">{String((page - 1) * pageSize + i + 1).padStart(2, '0')}</span>
+              <span className="row-num">
+                {String((page - 1) * pageSize + i + 1).padStart(2, "0")}
+              </span>
               <div className="row-title">{story.title}</div>
               <span className="row-meta">{story.chapters.length} chương</span>
             </div>
           ))}
 
-          {!visibleStories.length && (
-            error || status === 'loading' || status === 'idle' ? (
-              <div className={`library-empty${error ? ' has-error' : ''}`} role={error ? 'alert' : 'status'}>
-                {error || 'Đang tải thư viện truyện...'}
+          {!visibleStories.length &&
+            (error || status === "loading" || status === "idle" ? (
+              <div
+                className={`library-empty${error ? " has-error" : ""}`}
+                role={error ? "alert" : "status"}
+              >
+                {error || "Đang tải thư viện truyện..."}
               </div>
             ) : (
               <div className="stories-empty-state" role="status">
-                <div className="stories-empty-title">Thư viện chưa có truyện nào</div>
-                <p>Truyện được thêm vào hệ thống sẽ xuất hiện tại đây để bạn chọn và bắt đầu nghe.</p>
+                <div className="stories-empty-title">
+                  Thư viện chưa có truyện nào
+                </div>
+                <p>
+                  Truyện được thêm vào hệ thống sẽ xuất hiện tại đây để bạn chọn
+                  và bắt đầu nghe.
+                </p>
               </div>
-            )
-          )}
+            ))}
         </div>
         {stories.length > 0 && (
           <Pagination
@@ -91,7 +109,10 @@ export function LibraryPage() {
             page={page}
             pageSize={pageSize}
             onPageChange={setPage}
-            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
           />
         )}
       </div>

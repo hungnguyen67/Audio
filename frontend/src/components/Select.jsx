@@ -8,13 +8,23 @@ function ChevronDownIcon({ className = '' }) {
   );
 }
 
-export function Select({ value, options, onChange, className = '', ariaLabel }) {
+export function Select({
+  id,
+  value,
+  options,
+  onChange,
+  className = '',
+  ariaLabel,
+  disabled = false,
+  placeholder = 'Chọn...',
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUp, setOpenUp] = useState(false);
   const selectRef = useRef(null);
   const selectedOption = options.find((option) => option.value === value);
 
   const toggleMenu = () => {
+    if (disabled) return;
     if (isOpen) {
       setIsOpen(false);
       return;
@@ -36,17 +46,23 @@ export function Select({ value, options, onChange, className = '', ariaLabel }) 
     return () => document.removeEventListener('mousedown', closeSelect);
   }, []);
 
+  useEffect(() => {
+    if (disabled) setIsOpen(false);
+  }, [disabled]);
+
   return (
     <div ref={selectRef} className="select-wrap">
       <button
         type="button"
+        id={id}
         className={`ctrl-select custom-select-button ${className}`}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        disabled={disabled}
         onClick={toggleMenu}
       >
-        <span>{selectedOption?.label}</span>
+        <span>{selectedOption?.label || placeholder}</span>
         <ChevronDownIcon className={isOpen ? 'is-open' : ''} />
       </button>
       {isOpen && (

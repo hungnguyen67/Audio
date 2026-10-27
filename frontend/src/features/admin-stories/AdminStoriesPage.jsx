@@ -39,8 +39,10 @@ export function AdminStoriesPage() {
     <>
       <div className="page-hero">
         <div>
-          <h1 className="hero-title">Quản lý truyện</h1>
-          <p className="hero-sub">Quản lý {stories.length} truyện và các tập.</p>
+          <h1 className="hero-title">Kho truyện audio</h1>
+          <p className="hero-sub">
+            Đang có {stories.length} truyện. Mở truyện để quản lý các tập hoặc tạo truyện mới.
+          </p>
         </div>
         <button className="btn btn-dark" onClick={editor.actions.openNew}>
           Tạo truyện

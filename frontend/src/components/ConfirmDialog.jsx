@@ -8,6 +8,8 @@ export function ConfirmDialog({
   confirmLabel = 'Xóa',
   cancelLabel = 'Hủy',
   busy = false,
+  busyLabel = 'Đang xóa...',
+  confirmClassName = 'confirm-dialog-delete',
   onConfirm,
   onCancel,
 }) {
@@ -55,11 +57,11 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            className="btn confirm-dialog-delete"
+            className={`btn ${confirmClassName}`}
             onClick={onConfirm}
             disabled={busy}
           >
-            {busy ? 'Đang xóa...' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </section>

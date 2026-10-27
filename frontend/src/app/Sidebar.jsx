@@ -1,5 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
-import { AudioLines, Library } from "lucide-react";
+import { AudioLines, Library, Download } from "lucide-react";
 import { BrandIcon } from "../components/BrandIcon";
 
 const navClass = ({ isActive }) => `admin-nav-item${isActive ? " active" : ""}`;
@@ -21,14 +21,18 @@ export function Sidebar() {
       <nav className="admin-sidebar-nav" aria-label="Điều hướng quản trị">
         <NavLink className={navClass} to="/admin">
           <Library size={17} />
-          <span>Quản lý truyện</span>
+          <span>Kho truyện audio</span>
         </NavLink>
       </nav>
 
       <nav className="admin-sidebar-nav" aria-label="Liên kết khác">
         <NavLink className={navClass} to="/library">
           <AudioLines size={17} />
-          <span>Thư viện truyện</span>
+          <span>Khám phá truyện</span>
+        </NavLink>
+        <NavLink className={navClass} to="/douyin">
+          <Download size={17} />
+          <span>Tải Douyin</span>
         </NavLink>
       </nav>
     </aside>
