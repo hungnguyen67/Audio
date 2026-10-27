@@ -51,7 +51,7 @@ export function StoryPage() {
     <>
       <div className="page-hero">
         <div>
-          <h1 className="hero-title">{story.title}</h1>
+          <h1 className="hero-title">Chạm để lắng nghe</h1>
           <p className="hero-sub">
             {lastListened ? `Đã nghe đến tập ${lastListened}` : "Chưa nghe tập nào"}
           </p>

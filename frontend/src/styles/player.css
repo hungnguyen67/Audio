@@ -130,24 +130,24 @@
 .mini-player {
   position: fixed;
   z-index: 180;
-  right: 20px;
-  bottom: 20px;
+  right: 24px;
+  bottom: 24px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px 10px;
+  gap: 6px 8px;
   width: min(360px, calc(100vw - 40px));
-  padding: 12px;
+  padding: 14px 18px;
   border: 1px solid #dbe4f0;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(145deg, #fff 65%, #f7faff);
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
 
 .mini-player-title {
   overflow: hidden;
   color: #172033;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 650;
   line-height: 1.4;
   text-decoration: none;
@@ -200,6 +200,6 @@
     right: 12px;
     bottom: 12px;
     width: calc(100vw - 24px);
-    padding: 11px;
+    padding: 12px 16px;
   }
 }

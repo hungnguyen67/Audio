@@ -5,12 +5,11 @@ import { usePlayer } from "./usePlayer";
 
 /** Bản đầy đủ, hiển thị trong trang truyện. Mọi state lấy từ context. */
 export function PlayerCard() {
-  const { chapter, status, settings, changeVoice } = usePlayer();
+  const { status, settings, changeVoice } = usePlayer();
 
   return (
     <div className="player-card">
       <div className="player-label">Đang phát</div>
-      <div className="player-title">{chapter?.title || "Chưa chọn chương"}</div>
       <div className="player-status">{status}</div>
 
       <AudioControls />

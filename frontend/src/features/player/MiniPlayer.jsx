@@ -17,7 +17,7 @@ export function MiniPlayer() {
         aria-label="Mở trang truyện và trình phát"
         title="Mở trang truyện"
       >
-        {chapter.title}
+        Tập {chapter.number}
       </Link>
       <button
         type="button"

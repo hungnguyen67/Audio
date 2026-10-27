@@ -207,7 +207,7 @@ body {
 }
 
 .hero-title {
-  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-size: clamp(1.35rem, 2.4vw, 1.7rem);
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.02em;
@@ -621,15 +621,6 @@ body {
   text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 6px;
-}
-
-.player-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  margin-bottom: 4px;
 }
 
 .player-status {
