@@ -9,7 +9,6 @@ if not FRONTEND_ROOT.exists():
 VOICE = "vi-VN-HoaiMyNeural"
 EDGE_VOICES = {
     "edge:vi-VN-HoaiMyNeural": "vi-VN-HoaiMyNeural",
-    "edge:vi-VN-NamMinhNeural": "vi-VN-NamMinhNeural",
 }
 
 DB_CONFIG = {

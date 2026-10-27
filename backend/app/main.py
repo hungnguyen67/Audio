@@ -387,7 +387,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         cursor.close()
         connection.close()
         self.send_json(HTTPStatus.OK, {
-            "voice": settings["voice"],
+            "voice": self.normalize_voice(settings["voice"]),
             "playbackRate": float(settings["playback_rate"]),
             "volume": float(settings["volume"]),
             "chunkIndex": progress["chunk_index"],
@@ -480,8 +480,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def normalize_voice(value):
         voice = str(value or "edge:vi-VN-HoaiMyNeural").strip()
+        if voice == "edge:vi-VN-NamMinhNeural":
+            # Migrate saved settings from older versions that offered Nam Minh.
+            return "edge:vi-VN-HoaiMyNeural"
         if voice not in EDGE_VOICES:
-            raise ValueError("Giọng đọc không hợp lệ. Chỉ hỗ trợ Hoài My và Nam Minh.")
+            raise ValueError("Giọng đọc không hợp lệ. Chỉ hỗ trợ Hoài My.")
         return voice
 
     def save_chapter(self):
@@ -978,14 +981,28 @@ class AudioHandler(SimpleHTTPRequestHandler):
             with CHUNK_JOBS_LOCK:
                 CHUNK_JOBS[job_id].update({"status": "completed", "finalUrl": f"/api/audio/{audio_id}"})
             total_seconds = time.perf_counter() - job_started_at
+            audio_mib = len(full_audio) / (1024 * 1024)
+            audio_mib_per_second = audio_mib / total_seconds if total_seconds else 0
+            characters_per_second = len(content) / total_seconds if total_seconds else 0
+            retry_summary = (
+                f"{parallel_metrics['retriedChunkCount']} đoạn có retry/"
+                f"{parallel_metrics['chunkCount']} đoạn TTS mới "
+                f"({parallel_metrics['retryRate']:.1%}), "
+                f"{parallel_metrics['retryCount']} lần thử lại"
+            )
             print(
-                f'[audio {job_id}] HOÀN TẤT chương {chapter_number} "{chapter_label}" ({chapter_id}): '
-                f"{len(chunks)} đoạn, {len(full_audio):,} byte audio, "
-                f"{total_seconds:.2f}s tổng. Benchmark: chia {split_seconds:.4f}s; "
+                f'[audio {job_id}] HOÀN TẤT chương {chapter_number} "{chapter_label}" ({chapter_id}).\n'
+                f"  Kết quả: {len(content):,} ký tự; {len(audio_rows)}/{len(chunks)} đoạn; "
+                f"{len(full_audio):,} byte ({audio_mib:.2f} MiB) audio.\n"
+                f"  Hiệu suất: {total_seconds:.2f}s tổng; {characters_per_second:.1f} ký tự/s; "
+                f"{audio_mib_per_second:.2f} MiB/s; "
+                f"{parallel_metrics['averageChunkSeconds']:.2f}s/đoạn TTS trung bình.\n"
+                f"  Thử lại: {retry_summary}.\n"
+                f"  Thời gian: chia {split_seconds:.4f}s; chờ thread {thread_start_delay:.4f}s; "
                 f"TTS + ghi chunk {parallel_metrics['parallelStageSeconds']:.2f}s "
                 f"(ghi chunk {parallel_metrics['chunkStoreSeconds']:.2f}s); "
-                f"đọc chunk {read_chunks_seconds:.2f}s; ghép bytes {join_seconds:.4f}s; "
-                f"lưu audio cuối {persist_seconds:.2f}s.",
+                f"đọc chunk {read_chunks_seconds:.2f}s; ghép audio {join_seconds:.4f}s; "
+                f"lưu cuối vào MySQL {persist_seconds:.2f}s.",
                 flush=True,
             )
         except Exception as error:

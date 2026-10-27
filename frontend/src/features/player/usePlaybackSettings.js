@@ -9,6 +9,10 @@ export function usePlaybackSettings(audio) {
   const [volume, setVolume] = usePersistentState(STORAGE_KEYS.volume, 1);
 
   useEffect(() => {
+    if (voice !== DEFAULT_VOICE) setVoice(DEFAULT_VOICE);
+  }, [setVoice, voice]);
+
+  useEffect(() => {
     // defaultPlaybackRate: đổi `src` sẽ reset playbackRate về giá trị này.
     audio.defaultPlaybackRate = speed;
     audio.playbackRate = speed;
@@ -21,11 +25,10 @@ export function usePlaybackSettings(audio) {
   /** Áp trạng thái đã lưu trên server của một chương. */
   const apply = useCallback(
     (saved) => {
-      if (saved.voice) setVoice(saved.voice);
       if (Number.isFinite(saved.playbackRate)) setSpeed(saved.playbackRate);
       if (Number.isFinite(saved.volume)) setVolume(saved.volume);
     },
-    [setVoice, setSpeed, setVolume],
+    [setSpeed, setVolume],
   );
 
   return useMemo(
