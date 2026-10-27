@@ -637,8 +637,10 @@ body {
 }
 
 .player-card > .ctrl-row {
-  margin-top: 16px;
+  max-width: 320px;
+  margin-top: 12px;
   margin-bottom: 0;
+  gap: 10px;
 }
 
 .player-card .audio-actions-row {
@@ -656,6 +658,7 @@ body {
 
 .ctrl-col {
   flex: 1;
+  min-width: 0;
 }
 
 .ctrl-label {
@@ -679,6 +682,16 @@ body {
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
+}
+
+.player-card .ctrl-select {
+  min-height: 32px;
+  padding: 5px 30px 5px 9px;
+  color: var(--text-2);
+  background: #f8fafc;
+  border-color: #dbe3ee;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .select-wrap {

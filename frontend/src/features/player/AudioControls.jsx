@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, RotateCw, Volume2 } from "lucide-react";
 import { usePlayer } from "./usePlayer";
 
@@ -56,10 +56,15 @@ function formatTime(seconds) {
 export function AudioControls() {
   const { audio } = usePlayer();
   const { currentTime, duration, minTime, paused, live, ready } = useAudioTime(audio);
+  const [previewTime, setPreviewTime] = useState(null);
+  const seekingRef = useRef(false);
   const seekRange = Math.max(0, duration - minTime);
   const seekProgress = seekRange
     ? ((Math.min(currentTime, duration) - minTime) / seekRange) * 100
     : 0;
+  const previewPosition = previewTime === null || !seekRange
+    ? 0
+    : ((previewTime - minTime) / seekRange) * 100;
 
   const togglePlay = () => {
     if (audio.paused) audio.play().catch(() => {});
@@ -78,22 +83,60 @@ export function AudioControls() {
         >
           {paused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
         </button>
-        <input
-          className="audio-range"
-          type="range"
-          min={minTime}
-          max={duration || 0}
-          step="1"
-          value={Math.min(duration || 0, Math.max(minTime, currentTime))}
-          style={{
-            "--range-progress": `${seekProgress}%`,
-          }}
-          disabled={!ready || duration <= 0}
-          aria-label="Thanh tua"
-          onChange={(event) => {
-            audio.currentTime = Number(event.target.value);
-          }}
-        />
+        <div className={`audio-seek-wrap${previewTime !== null ? " is-previewing" : ""}`}>
+          {previewTime !== null && (
+            <span
+              className="audio-seek-preview"
+              style={{ "--seek-preview-position": `${previewPosition}%` }}
+              aria-hidden="true"
+            >
+              {formatTime(previewTime)}
+            </span>
+          )}
+          <input
+            className="audio-range"
+            type="range"
+            min={minTime}
+            max={duration || 0}
+            step="1"
+            value={Math.min(duration || 0, Math.max(minTime, currentTime))}
+            style={{
+              "--range-progress": `${seekProgress}%`,
+            }}
+            disabled={!ready || duration <= 0}
+            aria-label="Thanh tua"
+            onChange={(event) => {
+              const time = Number(event.target.value);
+              audio.currentTime = time;
+              if (seekingRef.current) setPreviewTime(time);
+            }}
+            onPointerMove={(event) => {
+              if (event.pointerType === "mouse" && !seekingRef.current) {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+                setPreviewTime(minTime + ratio * seekRange);
+              } else if (seekingRef.current) {
+                setPreviewTime(Number(event.currentTarget.value));
+              }
+            }}
+            onPointerLeave={() => {
+              if (!seekingRef.current) setPreviewTime(null);
+            }}
+            onPointerDown={(event) => {
+              seekingRef.current = true;
+              setPreviewTime(Number(event.currentTarget.value));
+            }}
+            onPointerUp={() => {
+              seekingRef.current = false;
+              window.setTimeout(() => setPreviewTime(null), 800);
+            }}
+            onFocus={() => setPreviewTime(currentTime)}
+            onBlur={() => {
+              seekingRef.current = false;
+              setPreviewTime(null);
+            }}
+          />
+        </div>
         <span className="audio-time">
           {formatTime(currentTime)} / {formatTime(duration)}{live ? " · đang tạo" : ""}
         </span>
