@@ -2123,8 +2123,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 -6px;
-  padding: 0 8px;
+  margin: -10px -6px;
+  padding: 10px 8px;
   color: var(--text-muted);
   background: transparent;
   border: 0;
@@ -2141,7 +2141,7 @@ body {
 .dy-library-tab.is-active::after {
   position: absolute;
   right: 0;
-  bottom: -11px;
+  bottom: -1px;
   left: 0;
   height: 2px;
   background: var(--link);
@@ -2227,8 +2227,8 @@ body {
 }
 
 .dy-folder-breadcrumb > button:hover {
-  color: var(--link);
-  text-decoration: underline;
+  color: var(--text);
+  text-decoration: none;
 }
 
 .dy-folder-breadcrumb strong {
@@ -2263,8 +2263,10 @@ body {
   transition: border-color 0.14s, background 0.14s;
 }
 
-.dy-folder-item:hover {
-  background: #f8fbff;
+.dy-folder-item:hover,
+.dy-folder-item:focus-within,
+.dy-folder-item:active {
+  background: #fff;
   border-color: #bfdbfe;
 }
 
@@ -2289,10 +2291,10 @@ body {
   height: 42px;
   flex: 0 0 42px;
   place-items: center;
-  color: #2563eb;
+  color: var(--text-muted);
   background: transparent;
-  border: 1px solid #bfdbfe;
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
 }
 
 .dy-folder-info {

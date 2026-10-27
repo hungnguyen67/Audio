@@ -208,10 +208,6 @@ export function DouyinDownloaderPage() {
     setCurrentFolderId(folderId);
     clearSelection();
     setMoveFolderId('');
-    const folder = folders.find((item) => item.id === folderId);
-    if (folder && folder.videoCount === 0) {
-      toast.info('Thư mục đang trống', 'Dán link và chọn thư mục này để lưu video vào đây.', 5000);
-    }
   };
 
   return (
@@ -401,7 +397,7 @@ export function DouyinDownloaderPage() {
                     {folders.map((folder) => (
                       <article key={folder.id} className="dy-folder-item">
                         <button type="button" className="dy-folder-tile" onClick={() => openFolder(folder.id)}>
-                          <span className="dy-folder-icon"><Folder size={28} aria-hidden="true" /></span>
+                          <span className="dy-folder-icon"><Folder size={28} strokeWidth={2.5} aria-hidden="true" /></span>
                           <span className="dy-folder-info">
                             <strong>{folder.name}</strong>
                             <span>{folder.videoCount} video</span>
@@ -476,6 +472,9 @@ export function DouyinDownloaderPage() {
                 })}
                   </div>
                 ) : null}
+                {!loadingLibrary && currentFolder && visibleVideos.length === 0 && (
+                  <div className="dy-library-empty">Thư mục này chưa có video.</div>
+                )}
               </>
             )}
           </div>
