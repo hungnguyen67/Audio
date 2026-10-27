@@ -58,21 +58,10 @@ export function DouyinDownloaderPage() {
   const [moveFolderId, setMoveFolderId] = useState('');
   const inputRef = useRef(null);
   const folderNameRef = useRef(null);
-  const hasNotifiedEmptyLibrary = useRef(false);
   const isBusy = status === 'loading' || status === 'saving';
   const currentFolder = folders.find((folder) => folder.id === currentFolderId);
   const visibleVideos = videos.filter((video) => video.folderId === currentFolderId);
   const visibleVideoIds = visibleVideos.map((video) => video.id);
-
-  useEffect(() => {
-    if (loadingLibrary || activeTab !== 'library' || videos.length > 0 || hasNotifiedEmptyLibrary.current) return;
-    hasNotifiedEmptyLibrary.current = true;
-    toast.info(
-      'Thư viện chưa có video',
-      folders.length ? 'Chọn một thư mục hoặc dán link Douyin để lưu video.' : 'Dán link Douyin để lưu video vào thư viện.',
-      5000,
-    );
-  }, [activeTab, folders.length, loadingLibrary, videos.length]);
 
   useEffect(() => {
     if (!isCreateFolderOpen) return undefined;
