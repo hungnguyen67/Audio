@@ -157,6 +157,9 @@
 }
 
 .mini-player-title {
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
   overflow: hidden;
   color: #172033;
   font-size: 14px;

@@ -93,7 +93,7 @@ export function AudioControls() {
   };
 
   return (
-    <div className="audio-controls-wrap">
+    <div className="audio-controls-wrap" onClick={(event) => event.stopPropagation()}>
       <div className="audio-controls">
         <button
           type="button"

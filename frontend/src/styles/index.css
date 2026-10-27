@@ -859,7 +859,7 @@ body {
   display: flex;
   flex-direction: column;
   width: 248px;
-  padding: 14px 14px 16px;
+  padding: 12px 14px 16px;
   background: #fff;
   border-right: 1px solid var(--border);
   transition: width 0.2s ease;
@@ -1619,7 +1619,7 @@ body {
     inset: 0 0 auto;
     width: 100%;
     height: auto;
-    padding: 14px 14px 18px;
+    padding: 12px 14px 18px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
