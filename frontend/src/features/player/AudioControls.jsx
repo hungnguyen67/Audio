@@ -56,15 +56,36 @@ function formatTime(seconds) {
 export function AudioControls() {
   const { audio } = usePlayer();
   const { currentTime, duration, minTime, paused, live, ready } = useAudioTime(audio);
-  const [previewTime, setPreviewTime] = useState(null);
+  const [seekState, setSeekState] = useState(null);
   const seekingRef = useRef(false);
-  const seekRange = Math.max(0, duration - minTime);
+  const sliderRef = useRef(null);
+  const sliderMin = seekState?.min ?? minTime;
+  const sliderMax = seekState?.max ?? duration;
+  const seekRange = Math.max(0, sliderMax - sliderMin);
+  const displayedTime = seekState?.value ?? currentTime;
   const seekProgress = seekRange
-    ? ((Math.min(currentTime, duration) - minTime) / seekRange) * 100
+    ? ((Math.min(displayedTime, sliderMax) - sliderMin) / seekRange) * 100
     : 0;
-  const previewPosition = previewTime === null || !seekRange
-    ? 0
-    : ((previewTime - minTime) / seekRange) * 100;
+  useEffect(() => {
+    const slider = sliderRef.current;
+    if (!slider || seekingRef.current || seekState) return;
+    slider.value = String(Math.min(duration || 0, Math.max(minTime, currentTime)));
+  }, [currentTime, duration, minTime, seekState]);
+
+  useEffect(() => {
+    const onSeeked = () => setSeekState(null);
+    audio.addEventListener("seeked", onSeeked);
+    return () => audio.removeEventListener("seeked", onSeeked);
+  }, [audio]);
+
+  const finishSeeking = (value) => {
+    if (!seekingRef.current) return;
+    seekingRef.current = false;
+    const target = Number(value);
+    audio.currentTime = target;
+    if (Math.abs(audio.currentTime - target) < 0.05) setSeekState(null);
+    else setSeekState((state) => state && { ...state, value: target });
+  };
 
   const togglePlay = () => {
     if (audio.paused) audio.play().catch(() => {});
@@ -83,58 +104,38 @@ export function AudioControls() {
         >
           {paused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
         </button>
-        <div className={`audio-seek-wrap${previewTime !== null ? " is-previewing" : ""}`}>
-          {previewTime !== null && (
-            <span
-              className="audio-seek-preview"
-              style={{ "--seek-preview-position": `${previewPosition}%` }}
-              aria-hidden="true"
-            >
-              {formatTime(previewTime)}
-            </span>
-          )}
+        <div className="audio-seek-wrap">
           <input
             className="audio-range"
             type="range"
-            min={minTime}
-            max={duration || 0}
-            step="1"
-            value={Math.min(duration || 0, Math.max(minTime, currentTime))}
+            min={sliderMin}
+            max={sliderMax || 0}
+            step="0.1"
+            defaultValue={Math.min(sliderMax || 0, Math.max(sliderMin, displayedTime))}
+            ref={sliderRef}
             style={{
               "--range-progress": `${seekProgress}%`,
             }}
             disabled={!ready || duration <= 0}
             aria-label="Thanh tua"
-            onChange={(event) => {
-              const time = Number(event.target.value);
-              audio.currentTime = time;
-              if (seekingRef.current) setPreviewTime(time);
-            }}
-            onPointerMove={(event) => {
-              if (event.pointerType === "mouse" && !seekingRef.current) {
-                const bounds = event.currentTarget.getBoundingClientRect();
-                const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
-                setPreviewTime(minTime + ratio * seekRange);
-              } else if (seekingRef.current) {
-                setPreviewTime(Number(event.currentTarget.value));
-              }
-            }}
-            onPointerLeave={() => {
-              if (!seekingRef.current) setPreviewTime(null);
-            }}
             onPointerDown={(event) => {
               seekingRef.current = true;
-              setPreviewTime(Number(event.currentTarget.value));
+              setSeekState({
+                value: Number(event.currentTarget.value),
+                min: Number(event.currentTarget.min),
+                max: Number(event.currentTarget.max),
+              });
             }}
-            onPointerUp={() => {
-              seekingRef.current = false;
-              window.setTimeout(() => setPreviewTime(null), 800);
+            onChange={(event) => {
+              const value = Number(event.currentTarget.value);
+              if (seekingRef.current) {
+                setSeekState((state) => state && { ...state, value });
+              }
+              else audio.currentTime = value;
             }}
-            onFocus={() => setPreviewTime(currentTime)}
-            onBlur={() => {
-              seekingRef.current = false;
-              setPreviewTime(null);
-            }}
+            onPointerUp={(event) => finishSeeking(event.currentTarget.value)}
+            onPointerCancel={(event) => finishSeeking(event.currentTarget.value)}
+            onBlur={(event) => finishSeeking(event.currentTarget.value)}
           />
         </div>
         <span className="audio-time">

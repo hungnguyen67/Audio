@@ -15,8 +15,10 @@
 .audio-play-btn {
   display: grid;
   place-items: center;
+  align-self: center;
   width: 30px;
   height: 30px;
+  transform: translateY(-3px);
   padding: 0;
   color: #fff;
   background: var(--text);
@@ -48,6 +50,16 @@
   appearance: none;
   background: transparent;
   cursor: pointer;
+}
+
+.audio-seek-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.audio-seek-wrap .audio-range {
+  height: 28px;
+  touch-action: pan-y;
 }
 
 .audio-range::-webkit-slider-runnable-track {

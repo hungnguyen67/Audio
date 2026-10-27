@@ -859,7 +859,7 @@ body {
   display: flex;
   flex-direction: column;
   width: 248px;
-  padding: 22px 14px 16px;
+  padding: 14px 14px 16px;
   background: #fff;
   border-right: 1px solid var(--border);
   transition: width 0.2s ease;
@@ -869,7 +869,7 @@ body {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 0 10px 24px;
+  padding: 0 0 24px;
   color: var(--text);
   text-decoration: none;
 }
@@ -1619,7 +1619,7 @@ body {
     inset: 0 0 auto;
     width: 100%;
     height: auto;
-    padding: 8px 14px;
+    padding: 14px 14px 18px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
@@ -1649,7 +1649,7 @@ body {
 
   .admin-sidebar-brand {
     justify-content: flex-start;
-    padding: 0 0 8px;
+    padding: 0 0 12px 4px;
   }
 
   .admin-sidebar-brand > span:last-child {
