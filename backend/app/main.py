@@ -732,8 +732,10 @@ class AudioHandler(SimpleHTTPRequestHandler):
         voice,
         job_id,
         cache_id,
+        chapter_number,
         max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
     ):
+        chapter_tag = f"Tập {chapter_number}"
         semaphore = asyncio.Semaphore(max_concurrency)
         generation_started_at = time.perf_counter()
         chunk_latencies = []
@@ -778,7 +780,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 with CHUNK_JOBS_LOCK:
                     CHUNK_JOBS[job_id]["activeChunks"].append(active_chunk)
                 print(
-                    f"[audio {job_id}] Đang tạo đoạn {index + 1}/{len(chunks)} "
+                    f"[audio {job_id}] [{chapter_tag}] Đang tạo đoạn {index + 1}/{len(chunks)} "
                     f"({len(text):,} ký tự)...",
                     flush=True,
                 )
@@ -790,7 +792,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         active_chunk["receivedBytes"] = received_audio_bytes
                     if received_audio_bytes >= next_progress_bytes:
                         print(
-                            f"[audio {job_id}] Đoạn {index + 1}/{len(chunks)} "
+                            f"[audio {job_id}] [{chapter_tag}] Đoạn {index + 1}/{len(chunks)} "
                             f"đã nhận {received_audio_bytes / (1024 * 1024):.1f} MB audio...",
                             flush=True,
                         )
@@ -818,7 +820,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                                 self.synthesize(text, voice, report_audio_progress),
                             )
                             print(
-                                f"[audio {job_id}] Đã tạo đoạn {index + 1}/{len(chunks)} "
+                                f"[audio {job_id}] [{chapter_tag}] Đã tạo đoạn {index + 1}/{len(chunks)} "
                                 f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
                                 f"{attempt - 1} lần thử lại).",
                                 flush=True,
@@ -840,7 +842,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                                     "retryInSeconds": retry_delay,
                                 })
                             print(
-                                f"[audio {job_id}] Lỗi đoạn {index + 1}/{len(chunks)} "
+                                    f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
                                 f"(lần {attempt}, {type(retry_error).__name__}, "
                                 f"{time.perf_counter() - attempt_started_at:.2f}s, "
                                 f"{received_audio_bytes:,} byte): {retry_error}. "
@@ -875,7 +877,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             if index == 0 and not first_chunk_ready:
                 first_chunk_ready = True
                 print(
-                    f"[audio {job_id}] Chunk đầu tiên sẵn sàng sau "
+                    f"[audio {job_id}] [{chapter_tag}] Chunk đầu tiên sẵn sàng sau "
                     f"{time.perf_counter() - generation_started_at:.2f}s.",
                     flush=True,
                 )
@@ -888,7 +890,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         max_chunk_seconds = max(chunk_latencies, default=0)
         retry_rate = retried_chunk_count / len(chunk_latencies) if chunk_latencies else 0
         print(
-            f"[audio {job_id}] Đoạn/TTS: {len(chunk_latencies)} mới, "
+            f"[audio {job_id}] [{chapter_tag}] Tổng kết TTS: {len(chunk_latencies)} đoạn mới, "
             f"latency TB/cao nhất {average_chunk_seconds:.2f}/{max_chunk_seconds:.2f}s, "
             f"{retried_chunk_count} đoạn phải thử lại ({retry_rate:.0%}), "
             f"tổng retry {retry_count}; giai đoạn song song + lưu chunk "
@@ -927,7 +929,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         with CHUNK_JOBS_LOCK:
             CHUNK_JOBS[job_id]["totalChunks"] = len(chunks)
         print(
-            f'[audio {job_id}] Bắt đầu chương {chapter_number} "{chapter_label}" ({chapter_id}): '
+            f'[audio {job_id}] Bắt đầu Tập {chapter_number} "{chapter_label}" ({chapter_id}): '
             f"{len(content):,} ký tự, chia thành {len(chunks)} đoạn "
             f"({split_seconds:.4f}s; chờ thread {thread_start_delay:.4f}s).",
             flush=True,
@@ -939,6 +941,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     voice,
                     job_id,
                     cache_id,
+                    chapter_number,
                     max_concurrency=EDGE_TTS_CHUNK_CONCURRENCY,
                 )
             )
@@ -991,7 +994,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 f"{parallel_metrics['retryCount']} lần thử lại"
             )
             print(
-                f'[audio {job_id}] HOÀN TẤT chương {chapter_number} "{chapter_label}" ({chapter_id}).\n'
+                f'[audio {job_id}] HOÀN TẤT Tập {chapter_number} "{chapter_label}" ({chapter_id}).\n'
                 f"  Kết quả: {len(content):,} ký tự; {len(audio_rows)}/{len(chunks)} đoạn; "
                 f"{len(full_audio):,} byte ({audio_mib:.2f} MiB) audio.\n"
                 f"  Hiệu suất: {total_seconds:.2f}s tổng; {characters_per_second:.1f} ký tự/s; "
@@ -1007,7 +1010,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             )
         except Exception as error:
             print(
-                f'[audio {job_id}] THẤT BẠI chương {chapter_number} "{chapter_label}" ({chapter_id}): {error}',
+                f'[audio {job_id}] THẤT BẠI Tập {chapter_number} "{chapter_label}" ({chapter_id}): {error}',
                 flush=True,
             )
             connection = get_connection()
