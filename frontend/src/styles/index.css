@@ -798,12 +798,17 @@ body {
 }
 
 .audio-seek-controls button {
-  min-width: 52px;
-  padding: 5px 8px;
+  display: inline-flex;
+  place-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 46px;
+  height: 34px;
+  padding: 0 3px;
   color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
   font: inherit;
   font-size: 12px;
   font-weight: 600;

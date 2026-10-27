@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Volume2 } from "lucide-react";
+import { Pause, Play, RotateCcw, RotateCw, Volume2 } from "lucide-react";
 import { usePlayer } from "./usePlayer";
 
 function useAudioTime(audio) {
@@ -129,10 +129,12 @@ export function SeekButtons() {
   return (
     <div className="audio-seek-controls" aria-label="Điều khiển tua audio">
       <button type="button" onClick={() => seekBy(-10)} disabled={!canSeek} aria-label="Lùi 10 giây" title="Lùi 10 giây">
-        −10s
+        <RotateCcw size={17} aria-hidden="true" />
+        <span>10s</span>
       </button>
       <button type="button" onClick={() => seekBy(10)} disabled={!canSeek} aria-label="Tiến 10 giây" title="Tiến 10 giây">
-        +10s
+        <RotateCw size={17} aria-hidden="true" />
+        <span>10s</span>
       </button>
     </div>
   );
