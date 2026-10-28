@@ -126,8 +126,9 @@ def auto_generate_missing_audio():
                 connection.close()
 
             if chapter:
+                port = int(os.environ.get("PORT", "3001"))
                 request = Request(
-                    f"http://127.0.0.1:3001/api/chapters/{chapter[0]}/audio-jobs?voice=edge%3A{VOICE}",
+                    f"http://127.0.0.1:{port}/api/chapters/{chapter[0]}/audio-jobs?voice=edge%3A{VOICE}",
                     method="POST",
                 )
                 with urlopen(request, timeout=10) as response:

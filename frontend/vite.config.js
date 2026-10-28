@@ -1,13 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const frontendPort = Number(process.env.AUDIO_FRONTEND_PORT || 3000);
+const backendPort = process.env.AUDIO_BACKEND_PORT || 3001;
+const douyinPort = process.env.AUDIO_DOUYIN_PORT || 5005;
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: frontendPort,
     proxy: {
-      '/api/douyin': 'http://127.0.0.1:5005',
-      '/api': 'http://127.0.0.1:3001',
+      '/api/douyin': `http://127.0.0.1:${douyinPort}`,
+      '/api': `http://127.0.0.1:${backendPort}`,
     },
   },
   build: {
