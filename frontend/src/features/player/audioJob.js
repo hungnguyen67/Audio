@@ -31,7 +31,7 @@ function describeProgress(job) {
   const percent = Math.round((done / job.totalChunks) * 100);
   const activeChunks = job.activeChunks ?? [];
   const activeStatus = activeChunks.length
-    ? ` · đang tạo ${activeChunks
+    ? ` · ${activeChunks
         .map((chunk) => {
           const number = chunk.index + 1;
           const retry = chunk.attempt > 1 ? ` (lần thử ${chunk.attempt})` : "";
@@ -39,10 +39,13 @@ function describeProgress(job) {
             const reason = chunk.error ? `: ${chunk.error}` : "";
             return `đoạn ${number} · thử lại sau ${chunk.retryInSeconds ?? 0}s${reason}`;
           }
+          if (chunk.state === "queued") {
+            return `đoạn ${number}${retry} · đang chờ lượt`;
+          }
           const received = chunk.receivedBytes
             ? ` · nhận ${Math.round(chunk.receivedBytes / 1024)} KB`
             : "";
-          return `đoạn ${number}${retry}${received}`;
+          return `đang tạo đoạn ${number}${retry}${received}`;
         })
         .join(", ")}`
     : "";

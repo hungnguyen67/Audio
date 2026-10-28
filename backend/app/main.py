@@ -33,7 +33,7 @@ AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_SIZE = 1000
-EDGE_TTS_CHUNK_CONCURRENCY = 1
+EDGE_TTS_CHUNK_CONCURRENCY = 3
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 DOUYIN_MEDIA_HOSTS = (
     "douyin.com",
@@ -768,93 +768,107 @@ class AudioHandler(SimpleHTTPRequestHandler):
         first_chunk_ready = 0 in completed_indices
 
         async def synth_one(index, text):
-            async with semaphore:
-                received_audio_bytes = 0
-                next_progress_bytes = 1024 * 1024
-                chunk_started_at = time.perf_counter()
-                active_chunk = {
-                    "index": index,
-                    "attempt": 1,
-                    "receivedBytes": 0,
-                    "state": "generating",
-                }
+            received_audio_bytes = 0
+            next_progress_bytes = 1024 * 1024
+            chunk_started_at = 0.0
+            active_chunk = None
+
+            def report_audio_progress(byte_count):
+                nonlocal received_audio_bytes, next_progress_bytes
+                received_audio_bytes += byte_count
                 with CHUNK_JOBS_LOCK:
-                    CHUNK_JOBS[job_id]["activeChunks"].append(active_chunk)
-                print(
-                    f"[audio {job_id}] [{chapter_tag}] Đang tạo đoạn {index + 1}/{len(chunks)} "
-                    f"({len(text):,} ký tự)...",
-                    flush=True,
-                )
+                    active_chunk["receivedBytes"] = received_audio_bytes
+                if received_audio_bytes >= next_progress_bytes:
+                    print(
+                        f"[audio {job_id}] [{chapter_tag}] Đoạn {index + 1}/{len(chunks)} "
+                        f"đã nhận {received_audio_bytes / (1024 * 1024):.1f} MB audio...",
+                        flush=True,
+                    )
+                    next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
 
-                def report_audio_progress(byte_count):
-                    nonlocal received_audio_bytes, next_progress_bytes
-                    received_audio_bytes += byte_count
-                    with CHUNK_JOBS_LOCK:
-                        active_chunk["receivedBytes"] = received_audio_bytes
-                    if received_audio_bytes >= next_progress_bytes:
-                        print(
-                            f"[audio {job_id}] [{chapter_tag}] Đoạn {index + 1}/{len(chunks)} "
-                            f"đã nhận {received_audio_bytes / (1024 * 1024):.1f} MB audio...",
-                            flush=True,
-                        )
-                        next_progress_bytes = (received_audio_bytes // (1024 * 1024) + 1) * 1024 * 1024
-
-                try:
-                    attempt = 0
-                    while True:
-                        attempt += 1
+            try:
+                attempt = 0
+                while True:
+                    attempt += 1
+                    if active_chunk is not None:
                         with CHUNK_JOBS_LOCK:
                             active_chunk.update({
                                 "attempt": attempt,
                                 "receivedBytes": 0,
                                 "retryInSeconds": 0,
-                                "state": "generating",
+                                "state": "queued",
                                 "error": None,
                             })
+                    try:
                         attempt_started_at = time.perf_counter()
-                        try:
+                        async with semaphore:
+                            if active_chunk is None:
+                                chunk_started_at = time.perf_counter()
+                                active_chunk = {
+                                    "index": index,
+                                    "attempt": attempt,
+                                    "receivedBytes": 0,
+                                    "state": "generating",
+                                }
+                                with CHUNK_JOBS_LOCK:
+                                    CHUNK_JOBS[job_id]["activeChunks"].append(active_chunk)
+                                print(
+                                    f"[audio {job_id}] [{chapter_tag}] Đang tạo đoạn {index + 1}/{len(chunks)} "
+                                    f"({len(text):,} ký tự)...",
+                                    flush=True,
+                                )
+                            with CHUNK_JOBS_LOCK:
+                                active_chunk.update({
+                                    "attempt": attempt,
+                                    "receivedBytes": 0,
+                                    "retryInSeconds": 0,
+                                    "state": "generating",
+                                    "error": None,
+                                })
                             received_audio_bytes = 0
                             next_progress_bytes = 1024 * 1024
+                            attempt_started_at = time.perf_counter()
                             audio = await asyncio.get_running_loop().run_in_executor(
                                 EDGE_TTS_EXECUTOR,
                                 asyncio.run,
                                 self.synthesize(text, voice, report_audio_progress),
                             )
-                            print(
-                                f"[audio {job_id}] [{chapter_tag}] Đã tạo đoạn {index + 1}/{len(chunks)} "
-                                f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
-                                f"{attempt - 1} lần thử lại).",
-                                flush=True,
+                        print(
+                            f"[audio {job_id}] [{chapter_tag}] Đã tạo đoạn {index + 1}/{len(chunks)} "
+                            f"({len(audio):,} byte, {time.perf_counter() - chunk_started_at:.2f}s, "
+                            f"{attempt - 1} lần thử lại).",
+                            flush=True,
+                        )
+                        return index, audio, time.perf_counter() - chunk_started_at, attempt - 1
+                    except Exception as error:
+                        retry_error = (
+                            RuntimeError(
+                                f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
                             )
-                            return index, audio, time.perf_counter() - chunk_started_at, attempt - 1
-                        except Exception as error:
-                            retry_error = (
-                                RuntimeError(
-                                    f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
-                                )
-                                if isinstance(error, asyncio.TimeoutError)
-                                else error
-                            )
-                            retry_delay = min(60, 2 ** min(attempt, 6))
+                            if isinstance(error, asyncio.TimeoutError)
+                            else error
+                        )
+                        retry_delay = min(60, 2 ** min(attempt, 6))
+                        with CHUNK_JOBS_LOCK:
+                            active_chunk.update({
+                                "state": "retrying",
+                                "error": str(retry_error)[:160],
+                                "retryInSeconds": retry_delay,
+                            })
+                        print(
+                            f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
+                            f"(lần {attempt}, {type(retry_error).__name__}, "
+                            f"{time.perf_counter() - attempt_started_at:.2f}s, "
+                            f"{received_audio_bytes:,} byte): {retry_error}. "
+                            f"Thử lại sau {retry_delay}s.",
+                            flush=True,
+                        )
+                        for seconds_left in range(retry_delay - 1, -1, -1):
+                            await asyncio.sleep(1)
                             with CHUNK_JOBS_LOCK:
-                                active_chunk.update({
-                                    "state": "retrying",
-                                    "error": str(retry_error)[:160],
-                                    "retryInSeconds": retry_delay,
-                                })
-                            print(
-                                    f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                                f"(lần {attempt}, {type(retry_error).__name__}, "
-                                f"{time.perf_counter() - attempt_started_at:.2f}s, "
-                                f"{received_audio_bytes:,} byte): {retry_error}. "
-                                f"Thử lại sau {retry_delay}s.",
-                                flush=True,
-                            )
-                            for seconds_left in range(retry_delay - 1, -1, -1):
-                                await asyncio.sleep(1)
-                                with CHUNK_JOBS_LOCK:
-                                    active_chunk["retryInSeconds"] = seconds_left
-                finally:
+                                active_chunk["retryInSeconds"] = seconds_left
+            finally:
+                if active_chunk is not None:
                     with CHUNK_JOBS_LOCK:
                         CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
 

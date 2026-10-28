@@ -42,7 +42,7 @@ class _TeeStream:
 def configure_console_encoding():
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(errors="backslashreplace")
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
 
     log_directory = ROOT / "backend" / "logs"
     log_directory.mkdir(parents=True, exist_ok=True)
