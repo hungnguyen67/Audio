@@ -33,7 +33,11 @@ AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_SIZE = 1000
-EDGE_TTS_CHUNK_CONCURRENCY = 3
+# Edge TTS is flaky when requests overlap or are launched from nested event loops.
+# Serialize generation across the whole backend to avoid NoAudioReceived bursts.
+EDGE_TTS_CHUNK_CONCURRENCY = 1
+EDGE_TTS_REQUEST_LOCK = threading.Lock()
+EDGE_TTS_REQUEST_COOLDOWN_SECONDS = 2.5
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 DOUYIN_MEDIA_HOSTS = (
     "douyin.com",
@@ -777,7 +781,8 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 nonlocal received_audio_bytes, next_progress_bytes
                 received_audio_bytes += byte_count
                 with CHUNK_JOBS_LOCK:
-                    active_chunk["receivedBytes"] = received_audio_bytes
+                    if active_chunk is not None:
+                        active_chunk["receivedBytes"] = received_audio_bytes
                 if received_audio_bytes >= next_progress_bytes:
                     print(
                         f"[audio {job_id}] [{chapter_tag}] Đoạn {index + 1}/{len(chunks)} "
@@ -850,11 +855,12 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         )
                         retry_delay = min(60, 2 ** min(attempt, 6))
                         with CHUNK_JOBS_LOCK:
-                            active_chunk.update({
-                                "state": "retrying",
-                                "error": str(retry_error)[:160],
-                                "retryInSeconds": retry_delay,
-                            })
+                            if active_chunk is not None:
+                                active_chunk.update({
+                                    "state": "retrying",
+                                    "error": str(retry_error)[:160],
+                                    "retryInSeconds": retry_delay,
+                                })
                         print(
                             f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
                             f"(lần {attempt}, {type(retry_error).__name__}, "
@@ -866,11 +872,13 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         for seconds_left in range(retry_delay - 1, -1, -1):
                             await asyncio.sleep(1)
                             with CHUNK_JOBS_LOCK:
-                                active_chunk["retryInSeconds"] = seconds_left
+                                if active_chunk is not None:
+                                    active_chunk["retryInSeconds"] = seconds_left
             finally:
                 if active_chunk is not None:
                     with CHUNK_JOBS_LOCK:
-                        CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
+                        if active_chunk in CHUNK_JOBS[job_id]["activeChunks"]:
+                            CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
 
         tasks = [
             asyncio.create_task(synth_one(index, text))
