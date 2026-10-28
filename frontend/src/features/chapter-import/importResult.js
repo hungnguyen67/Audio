@@ -1,9 +1,12 @@
+import { formatChapterRangeTitle } from "../../lib/textChapters";
+
 /** Gộp nhiều chương nguồn thành một tập. Dùng chung cho nhánh thành công lẫn lỗi giữa chừng. */
 export function mergeChapters(chapters, fromNumber) {
+  const lastChapter = chapters[chapters.length - 1];
   return {
     ...chapters[0],
     chapterNumber: fromNumber,
-    title: chapters[0].title || `Chương ${fromNumber}`,
+    title: formatChapterRangeTitle(fromNumber, lastChapter.chapterNumber || fromNumber + chapters.length - 1),
     content: chapters.map((chapter) => chapter.content).join("\n\n"),
   };
 }

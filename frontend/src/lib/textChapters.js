@@ -14,6 +14,10 @@ function parseChapterNumber(value, fallback) {
   return number || fallback;
 }
 
+export function formatChapterRangeTitle(from, to) {
+  return `Chương ${from} - Chương ${to}`;
+}
+
 export function splitTextIntoChapters(text) {
   const normalizedText = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   const headings = [...normalizedText.matchAll(chapterHeading)];
@@ -49,7 +53,7 @@ export function groupChapters(chapters, chaptersPerEpisode) {
     const titles = group.map((chapter) => chapter.title || `Chương ${chapter.chapterNumber}`);
     const combinedTitle = group.length === 1
       ? titles[0]
-      : `${titles[0]} - ${titles[titles.length - 1]}`;
+      : formatChapterRangeTitle(firstChapter.chapterNumber, group[group.length - 1].chapterNumber);
     const title = combinedTitle.length > 160
       ? `${combinedTitle.slice(0, 157)}...`
       : combinedTitle;
