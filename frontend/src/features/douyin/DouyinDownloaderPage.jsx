@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, Clipboard, Folder, FolderOpen, FolderPlus, Play, Plus, Trash2, Video, X } from 'lucide-react';
+import { Check, ChevronRight, Folder, FolderOpen, FolderPlus, Play, Plus, Trash2, Video, X } from 'lucide-react';
 import { douyinApi } from '../../api/douyin';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Select } from '../../components/Select';
@@ -44,7 +44,7 @@ export function DouyinDownloaderPage() {
     deleteFolder,
     moveSelected,
   } = useDouyinDownloader();
-  const [activeTab, setActiveTab] = useState('library');
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [activeVideo, setActiveVideo] = useState(null);
   const [folderName, setFolderName] = useState('');
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -74,11 +74,11 @@ export function DouyinDownloaderPage() {
   }, [isCreateFolderOpen, isCreatingFolder]);
 
   useEffect(() => {
-    if (activeTab !== 'paste') return;
+    if (!isPasteModalOpen) return;
     if (!folders.some((folder) => folder.id === selectedFolderId)) {
       setSelectedFolderId(folders[0]?.id || '');
     }
-  }, [activeTab, folders, selectedFolderId]);
+  }, [isPasteModalOpen, folders, selectedFolderId]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -103,17 +103,6 @@ export function DouyinDownloaderPage() {
       toast.error('Không thể tạo thư mục', createError.message || 'Vui lòng thử lại.', 5000);
     } finally {
       setIsCreatingFolder(false);
-    }
-  };
-
-  const handlePaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) setInput(text);
-      inputRef.current?.focus();
-    } catch (pasteError) {
-      toast.error('Không thể dán liên kết', pasteError.message, 5000);
-      inputRef.current?.focus();
     }
   };
 
@@ -210,38 +199,15 @@ export function DouyinDownloaderPage() {
 
       <section className="dy-library section-card" aria-label="Thư viện video Douyin">
         <div className="dy-library-toolbar">
-          <div className="dy-library-tabs" role="tablist" aria-label="Quản lý video">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'library'}
-              className={`dy-library-tab${activeTab === 'library' ? ' is-active' : ''}`}
-              onClick={() => setActiveTab('library')}
-            >
+          <div className="dy-library-tabs">
+            <div className="dy-library-tab is-active" aria-current="page">
               <FolderOpen size={16} aria-hidden="true" />
               Video đã lưu
               <span className="dy-library-count">{videos.length}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'paste'}
-              className={`dy-library-tab${activeTab === 'paste' ? ' is-active' : ''}`}
-              onClick={() => {
-                setActiveTab('paste');
-                const currentFolderExists = folders.some((folder) => folder.id === currentFolderId);
-                const preferredFolderId = currentFolderExists ? currentFolderId : selectedFolderId;
-                setSelectedFolderId(folders.some((folder) => folder.id === preferredFolderId) ? preferredFolderId : '');
-                window.setTimeout(() => inputRef.current?.focus(), 0);
-              }}
-            >
-              <Plus size={16} aria-hidden="true" />
-              Dán link
-            </button>
+            </div>
           </div>
 
-          {activeTab === 'library' && (
-            <div className="dy-library-actions">
+          <div className="dy-library-actions">
               {selectedIds.length > 0 && (
                 <div className="dy-move-actions">
                   <Select
@@ -285,77 +251,24 @@ export function DouyinDownloaderPage() {
                 <FolderPlus size={15} aria-hidden="true" />
                 Tạo thư mục
               </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  setIsPasteModalOpen(true);
+                  const currentFolderExists = folders.some((folder) => folder.id === currentFolderId);
+                  const preferredFolderId = currentFolderExists ? currentFolderId : selectedFolderId;
+                  setSelectedFolderId(folders.some((folder) => folder.id === preferredFolderId) ? preferredFolderId : '');
+                  window.setTimeout(() => inputRef.current?.focus(), 0);
+                }}
+              >
+                <Plus size={15} aria-hidden="true" />
+                Dán link
+              </button>
             </div>
-          )}
         </div>
 
-        {activeTab === 'paste' ? (
-          <div className="dy-paste-panel" role="tabpanel">
-            <form onSubmit={handleSubmit}>
-              <div className="dy-paste-heading">
-                <label className="dy-paste-label" htmlFor="douyin-link-input">Link hoặc nội dung chia sẻ Douyin</label>
-                <Select
-                  id="douyin-save-folder"
-                  className="dy-save-folder-select"
-                  ariaLabel="Lưu MP4 vào thư mục"
-                  value={selectedFolderId}
-                  options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
-                  onChange={setSelectedFolderId}
-                  disabled={isBusy}
-                  placeholder="Chưa có thư mục"
-                />
-              </div>
-              <textarea
-                ref={inputRef}
-                id="douyin-link-input"
-                className="form-textarea"
-                rows={5}
-                placeholder={'Dán một hoặc nhiều link Douyin, mỗi link một dòng...\nhttps://www.douyin.com/video/...'}
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                disabled={isBusy}
-              />
-              {isBusy && (
-                <div className="dy-loading-card">
-                  <div className="dy-loading-title">
-                    {batchProgress
-                      ? `Đang xử lý liên kết ${batchProgress.current}/${batchProgress.total} · đã lưu ${batchProgress.saved}, lỗi ${batchProgress.failed}`
-                      : status === 'saving' ? 'Đang tải MP4 và lưu vào cơ sở dữ liệu...' : 'Đang xử lý liên kết...'}
-                  </div>
-                  {batchProgress?.link && <div className="dy-batch-current-link">{batchProgress.link}</div>}
-                  {status === 'loading' && (
-                    <div className="dy-loading-steps">
-                      {STEP_LABELS.map((label, index) => {
-                        const stepNumber = index + 1;
-                        const className = step > stepNumber ? 'dy-step done' : step === stepNumber ? 'dy-step active' : 'dy-step';
-                        return (
-                          <div key={label} className={className}>
-                            <span className="dy-step-dot" />
-                            <span>{label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {status === 'saving' && <div className="dy-save-progress" aria-label="Đang lưu video" />}
-                </div>
-              )}
-              <div className="dy-paste-actions">
-                <button type="submit" className="btn btn-dark" disabled={isBusy || !input.trim() || !selectedFolderId}>
-                  {status === 'saving' ? 'Đang lưu...' : status === 'loading' ? 'Đang trích xuất...' : 'Trích xuất và lưu MP4'}
-                </button>
-                <button type="button" className="btn btn-outline" onClick={handlePaste} disabled={isBusy}>
-                  <Clipboard size={15} aria-hidden="true" />
-                  Dán từ clipboard
-                </button>
-                <button type="button" className="btn btn-outline" onClick={() => setActiveTab('library')}>
-                  Đóng
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : (
-          <div className="dy-library-content" role="tabpanel">
+        <div className="dy-library-content">
             {currentFolder && (
               <div className="dy-folder-breadcrumb">
                 <FolderOpen size={17} aria-hidden="true" />
@@ -466,9 +379,92 @@ export function DouyinDownloaderPage() {
                 )}
               </>
             )}
-          </div>
-        )}
+        </div>
       </section>
+
+      {isPasteModalOpen && (
+        <div
+          className="form-modal-backdrop dy-paste-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isBusy) setIsPasteModalOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !isBusy) setIsPasteModalOpen(false);
+          }}
+        >
+          <form
+            className="form-panel form-panel-single"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dy-paste-title"
+            onSubmit={handleSubmit}
+          >
+            <h2 id="dy-paste-title" className="form-panel-title">Dán link Douyin</h2>
+            <div className="dy-paste-heading">
+              <label className="dy-paste-label" htmlFor="douyin-link-input">Link hoặc nội dung chia sẻ Douyin</label>
+              <Select
+                id="douyin-save-folder"
+                className="dy-save-folder-select"
+                ariaLabel="Lưu MP4 vào thư mục"
+                value={selectedFolderId}
+                options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+                onChange={setSelectedFolderId}
+                disabled={isBusy}
+                placeholder="Chưa có thư mục"
+              />
+            </div>
+            <textarea
+              ref={inputRef}
+              id="douyin-link-input"
+              className="form-textarea"
+              rows={5}
+              placeholder={'Dán một hoặc nhiều link Douyin, mỗi link một dòng...\nhttps://www.douyin.com/video/...'}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              disabled={isBusy}
+            />
+            {isBusy && (
+              <div className="dy-loading-card">
+                <div className="dy-loading-title">
+                  {batchProgress
+                    ? `Đang xử lý liên kết ${batchProgress.current}/${batchProgress.total} · đã lưu ${batchProgress.saved}, lỗi ${batchProgress.failed}`
+                    : status === 'saving' ? 'Đang tải MP4 và lưu vào cơ sở dữ liệu...' : 'Đang xử lý liên kết...'}
+                </div>
+                {batchProgress?.link && <div className="dy-batch-current-link">{batchProgress.link}</div>}
+                {status === 'loading' && (
+                  <div className="dy-loading-steps">
+                    {STEP_LABELS.map((label, index) => {
+                      const stepNumber = index + 1;
+                      const className = step > stepNumber ? 'dy-step done' : step === stepNumber ? 'dy-step active' : 'dy-step';
+                      return (
+                        <div key={label} className={className}>
+                          <span className="dy-step-dot" />
+                          <span>{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {status === 'saving' && <div className="dy-save-progress" aria-label="Đang lưu video" />}
+              </div>
+            )}
+            <div className="dy-folder-modal-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setIsPasteModalOpen(false)}
+                disabled={isBusy}
+              >
+                Đóng
+              </button>
+              <button type="submit" className="btn btn-dark" disabled={isBusy || !input.trim() || !selectedFolderId}>
+                {status === 'saving' ? 'Đang lưu...' : status === 'loading' ? 'Đang trích xuất...' : 'Trích xuất và lưu MP4'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {isCreateFolderOpen && (
         <div

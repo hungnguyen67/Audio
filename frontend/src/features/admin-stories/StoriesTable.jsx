@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react";
 import { Pagination } from "../../components/Pagination";
 
 export function StoriesTable({
@@ -5,7 +6,6 @@ export function StoriesTable({
   page,
   pageSize,
   onPageChange,
-  onPageSizeChange,
   onOpenStory,
   onDeleteStory,
 }) {
@@ -25,7 +25,7 @@ export function StoriesTable({
           <span>#</span>
           <span>Tên truyện</span>
           <span>Số chương</span>
-          <span style={{ textAlign: "right" }}>Thao tác</span>
+          <span className="story-actions-heading">Thao tác</span>
         </div>
 
         {stories.length === 0 ? (
@@ -41,13 +41,16 @@ export function StoriesTable({
               <span className="row-meta">{story.chapters.length} chương</span>
               <span className="row-action">
                 <button
-                  className="btn-open"
+                  type="button"
+                  className="story-delete-button"
+                  aria-label={`Xóa truyện ${story.title}`}
+                  title="Xóa truyện"
                   onClick={(event) => {
                     event.stopPropagation();
                     onDeleteStory(story);
                   }}
                 >
-                  Xóa
+                  <Trash2 size={16} aria-hidden="true" />
                 </button>
               </span>
             </div>
@@ -61,7 +64,6 @@ export function StoriesTable({
           page={page}
           pageSize={pageSize}
           onPageChange={onPageChange}
-          onPageSizeChange={onPageSizeChange}
         />
       )}
     </div>

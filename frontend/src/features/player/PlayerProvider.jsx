@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { audioApi } from "../../api/audio";
 import { progressApi } from "../../api/progress";
 import { selectStoryById } from "../../entities/stories/selectors";
 import { resolveAudioUrl, startProgressiveAudio } from "./audioJob";
@@ -95,6 +96,7 @@ export function PlayerProvider({ children }) {
                   : generationStatusRef.current,
               );
             },
+            onJobNotFound: () => audioApi.createJob(target.id, saved.voice),
             onError: (streamError) => {
               playbackErrorRef.current = true;
               setStatus(`Audio đã tạo một phần; không thể tiếp tục tạo: ${streamError.message}`);

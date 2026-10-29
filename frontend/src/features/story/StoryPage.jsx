@@ -14,7 +14,7 @@ export function StoryPage() {
   const player = usePlayer();
   const savedChapterNumber = useStoryProgress(storyId);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const pageSize = 5;
 
   const playingHere = player.current?.storyId === storyId ? player.chapter : null;
   const lastListened = playingHere?.number ?? savedChapterNumber;
@@ -67,10 +67,6 @@ export function StoryPage() {
           page={page}
           pageSize={pageSize}
           onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size);
-            setPage(1);
-          }}
           onSelectChapter={(chapter) => player.play(storyId, chapter)}
         />
         <div className="story-player-col">

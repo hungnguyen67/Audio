@@ -8,7 +8,6 @@ export function StoryChapterList({
   page,
   pageSize,
   onPageChange,
-  onPageSizeChange,
   onSelectChapter,
 }) {
   return (
@@ -40,7 +39,6 @@ export function StoryChapterList({
         page={page}
         pageSize={pageSize}
         onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
       />
     </div>
   );

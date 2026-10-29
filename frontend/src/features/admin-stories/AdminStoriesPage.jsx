@@ -13,7 +13,7 @@ export function AdminStoriesPage() {
   const stories = useSelector(selectStories);
   const editor = useChapterEditor();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const pageSize = 5;
   const [storyToDelete, setStoryToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -54,10 +54,6 @@ export function AdminStoriesPage() {
         page={page}
         pageSize={pageSize}
         onPageChange={setPage}
-        onPageSizeChange={(size) => {
-          setPageSize(size);
-          setPage(1);
-        }}
         onOpenStory={editor.actions.openStory}
         onDeleteStory={setStoryToDelete}
       />

@@ -4,6 +4,7 @@ import ipaddress
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -16,12 +17,17 @@ from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 import edge_tts
 import mysql.connector
+from edge_tts.exceptions import NoAudioReceived
 
 from app.core.config import EDGE_VOICES, FRONTEND_ROOT, VOICE
 from app.core.logging import configure_console_encoding
 from app.repositories.database import get_connection
 from app.services.chapter_import import fetch_chapter_from_url
-from app.services.tts_service import EDGE_TTS_RECEIVE_TIMEOUT_SECONDS, synthesize_text
+from app.services.tts_service import (
+    EDGE_TTS_RECEIVE_TIMEOUT_SECONDS,
+    minimum_audio_bytes_for_text,
+    synthesize_text,
+)
 
 configure_console_encoding()
 
@@ -33,12 +39,14 @@ AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
 AUTO_AUDIO_WAKE = threading.Event()
 EDGE_TTS_CHUNK_SIZE = 1000
-# Edge TTS is flaky when requests overlap or are launched from nested event loops.
-# Serialize generation across the whole backend to avoid NoAudioReceived bursts.
+# Edge TTS may reject overlapping requests for the same voice.
 EDGE_TTS_CHUNK_CONCURRENCY = 1
-EDGE_TTS_REQUEST_LOCK = threading.Lock()
-EDGE_TTS_REQUEST_COOLDOWN_SECONDS = 2.5
+EDGE_TTS_MAX_ATTEMPTS_PER_CHUNK = 8
+EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES = 3
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
+BACKEND_RESTART_LOCK = threading.Lock()
+BACKEND_RESTART_REQUESTED = False
+BACKEND_SERVER = None
 DOUYIN_MEDIA_HOSTS = (
     "douyin.com",
     "douyinvod.com",
@@ -52,6 +60,59 @@ DOUYIN_MEDIA_HOSTS = (
 )
 DOUYIN_MAX_MEDIA_BYTES = 512 * 1024 * 1024
 DOUYIN_MAX_DURATION_SECONDS = 20 * 60
+
+
+def restart_backend_after_tts_failures(job_id, chapter_tag, chunk_number):
+    global BACKEND_RESTART_REQUESTED
+
+    with BACKEND_RESTART_LOCK:
+        if BACKEND_RESTART_REQUESTED:
+            return
+        if os.environ.get("AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO") == "1":
+            print(
+                f"[audio {job_id}] [{chapter_tag}] Bỏ qua restart tự động: backend "
+                "đã restart một lần nhưng TTS vẫn tiếp tục lỗi.",
+                flush=True,
+            )
+            return
+        BACKEND_RESTART_REQUESTED = True
+
+    print(
+        f"[audio {job_id}] [{chapter_tag}] Đã gặp {EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES} "
+        f"lỗi NoAudioReceived liên tiếp ở đoạn {chunk_number}; đang khởi động lại backend.",
+        flush=True,
+    )
+
+    def restart():
+        global BACKEND_RESTART_REQUESTED
+
+        server = BACKEND_SERVER
+        if server is None:
+            print("[backend] Không thể restart: HTTP server chưa sẵn sàng.", flush=True)
+            with BACKEND_RESTART_LOCK:
+                BACKEND_RESTART_REQUESTED = False
+            return
+
+        environment = os.environ.copy()
+        environment["AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO"] = "1"
+        environment["AUDIO_BACKEND_WAIT_FOR_PORT"] = "1"
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "app.main"],
+                cwd=os.getcwd(),
+                env=environment,
+            )
+        except OSError as error:
+            print(f"[backend] Không thể khởi động backend thay thế: {error}", flush=True)
+            with BACKEND_RESTART_LOCK:
+                BACKEND_RESTART_REQUESTED = False
+            return
+
+        server.shutdown()
+        server.server_close()
+        os._exit(0)
+
+    threading.Thread(target=restart, name="backend-restart", daemon=True).start()
 
 
 def is_allowed_douyin_media_url(url):
@@ -627,21 +688,33 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cache = cursor.fetchone()
             if cache and cache["status"] == "ready" and cache["audio_id"]:
                 cursor.execute(
-                    "SELECT id, chunk_index FROM audio_chunks "
+                    "SELECT id, chunk_index, OCTET_LENGTH(audio_data) AS audio_bytes FROM audio_chunks "
                     "WHERE chapter_audio_id = %s ORDER BY chunk_index",
                     (cache["id"],),
                 )
-                chunks = [
-                    {"index": chunk["chunk_index"], "url": f"/api/audio-chunks/{chunk['id']}"}
-                    for chunk in cursor.fetchall()
-                ]
-                self.send_json(HTTPStatus.OK, {
-                    "status": "ready",
-                    "url": f"/api/audio/{cache['audio_id']}",
-                    "chunks": chunks,
-                    "cached": True,
-                })
-                return
+                stored_chunks = cursor.fetchall()
+                chapter_chunks = self.split_content(chapter["content"])
+                cache_is_valid = len(stored_chunks) == len(chapter_chunks) and all(
+                    chunk["chunk_index"] == index
+                    and chunk["audio_bytes"] is not None
+                    and chunk["audio_bytes"] >= minimum_audio_bytes_for_text(chapter_chunks[index])
+                    for index, chunk in enumerate(stored_chunks)
+                )
+                if cache_is_valid:
+                    response_chunks = [
+                        {
+                            "index": chunk["chunk_index"],
+                            "url": f"/api/audio-chunks/{chunk['id']}",
+                        }
+                        for chunk in stored_chunks
+                    ]
+                    self.send_json(HTTPStatus.OK, {
+                        "status": "ready",
+                        "url": f"/api/audio/{cache['audio_id']}",
+                        "chunks": response_chunks,
+                        "cached": True,
+                    })
+                    return
 
             job_key = f"{chapter_id}:{voice}:{content_hash}"
             with CHUNK_JOBS_LOCK:
@@ -752,10 +825,25 @@ class AudioHandler(SimpleHTTPRequestHandler):
         try:
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT id, chunk_index FROM audio_chunks WHERE chapter_audio_id = %s ORDER BY chunk_index",
+                "SELECT id, chunk_index, OCTET_LENGTH(audio_data) "
+                "FROM audio_chunks WHERE chapter_audio_id = %s ORDER BY chunk_index",
                 (cache_id,),
             )
-            existing_chunks = cursor.fetchall()
+            stored_chunks = cursor.fetchall()
+            existing_chunks = []
+            invalid_chunk_ids = []
+            for chunk_id, chunk_index, audio_bytes in stored_chunks:
+                if (
+                    0 <= chunk_index < len(chunks)
+                    and audio_bytes is not None
+                    and audio_bytes >= minimum_audio_bytes_for_text(chunks[chunk_index])
+                ):
+                    existing_chunks.append((chunk_id, chunk_index))
+                else:
+                    invalid_chunk_ids.append((chunk_id,))
+            if invalid_chunk_ids:
+                cursor.executemany("DELETE FROM audio_chunks WHERE id = %s", invalid_chunk_ids)
+                connection.commit()
         finally:
             if cursor:
                 cursor.close()
@@ -775,6 +863,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             received_audio_bytes = 0
             next_progress_bytes = 1024 * 1024
             chunk_started_at = 0.0
+            consecutive_no_audio_failures = 0
             active_chunk = None
 
             def report_audio_progress(byte_count):
@@ -844,8 +933,20 @@ class AudioHandler(SimpleHTTPRequestHandler):
                             f"{attempt - 1} lần thử lại).",
                             flush=True,
                         )
+                        os.environ.pop("AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO", None)
                         return index, audio, time.perf_counter() - chunk_started_at, attempt - 1
                     except Exception as error:
+                        if isinstance(error, NoAudioReceived):
+                            consecutive_no_audio_failures += 1
+                            if consecutive_no_audio_failures >= EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES:
+                                restart_backend_after_tts_failures(
+                                    job_id,
+                                    chapter_tag,
+                                    index + 1,
+                                )
+                        else:
+                            consecutive_no_audio_failures = 0
+
                         retry_error = (
                             RuntimeError(
                                 f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
@@ -861,6 +962,15 @@ class AudioHandler(SimpleHTTPRequestHandler):
                                     "error": str(retry_error)[:160],
                                     "retryInSeconds": retry_delay,
                                 })
+                        if attempt >= EDGE_TTS_MAX_ATTEMPTS_PER_CHUNK:
+                            print(
+                                f"[audio {job_id}] [{chapter_tag}] Dừng đoạn {index + 1}/{len(chunks)} "
+                                f"sau {attempt} lần thử: {retry_error}.",
+                                flush=True,
+                            )
+                            raise RuntimeError(
+                                f"Đoạn {index + 1} thất bại sau {attempt} lần thử: {retry_error}"
+                            ) from error
                         print(
                             f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
                             f"(lần {attempt}, {type(retry_error).__name__}, "
@@ -880,33 +990,39 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         if active_chunk in CHUNK_JOBS[job_id]["activeChunks"]:
                             CHUNK_JOBS[job_id]["activeChunks"].remove(active_chunk)
 
-        tasks = [
-            asyncio.create_task(synth_one(index, text))
+        pending_chunks = [
+            (index, text)
             for index, text in enumerate(chunks)
             if index not in completed_indices
         ]
         completed_count = len(existing_chunks)
         results = []
-        for task in asyncio.as_completed(tasks):
-            result = await task
-            results.append(result)
-            index, audio, chunk_latency, retries = result
-            chunk_latencies.append(chunk_latency)
-            retry_count += retries
-            retried_chunk_count += retries > 0
-            store_started_at = time.perf_counter()
-            self.store_chunk(job_id, cache_id, index, audio)
-            chunk_store_seconds += time.perf_counter() - store_started_at
-            if index == 0 and not first_chunk_ready:
-                first_chunk_ready = True
-                print(
-                    f"[audio {job_id}] [{chapter_tag}] Chunk đầu tiên sẵn sàng sau "
-                    f"{time.perf_counter() - generation_started_at:.2f}s.",
-                    flush=True,
-                )
-            completed_count += 1
-            with CHUNK_JOBS_LOCK:
-                CHUNK_JOBS[job_id]["completedCount"] = completed_count
+        for batch_start in range(0, len(pending_chunks), max_concurrency):
+            batch = pending_chunks[batch_start:batch_start + max_concurrency]
+            tasks = [
+                asyncio.create_task(synth_one(index, text))
+                for index, text in batch
+            ]
+            for task in asyncio.as_completed(tasks):
+                result = await task
+                results.append(result)
+                index, audio, chunk_latency, retries = result
+                chunk_latencies.append(chunk_latency)
+                retry_count += retries
+                retried_chunk_count += retries > 0
+                store_started_at = time.perf_counter()
+                self.store_chunk(job_id, cache_id, index, audio)
+                chunk_store_seconds += time.perf_counter() - store_started_at
+                if index == 0 and not first_chunk_ready:
+                    first_chunk_ready = True
+                    print(
+                        f"[audio {job_id}] [{chapter_tag}] Chunk đầu tiên sẵn sàng sau "
+                        f"{time.perf_counter() - generation_started_at:.2f}s.",
+                        flush=True,
+                    )
+                completed_count += 1
+                with CHUNK_JOBS_LOCK:
+                    CHUNK_JOBS[job_id]["completedCount"] = completed_count
         results.sort(key=lambda item: item[0])
         synthesis_wall_seconds = time.perf_counter() - generation_started_at
         average_chunk_seconds = sum(chunk_latencies) / len(chunk_latencies) if chunk_latencies else 0
@@ -998,6 +1114,12 @@ class AudioHandler(SimpleHTTPRequestHandler):
             audio_id = existing_audio[0] if existing_audio else uuid.uuid4().hex
             if not existing_audio:
                 cursor.execute("INSERT INTO audios (id, chapter_id, title, content_hash, preview, audio_data) VALUES (%s, %s, %s, %s, %s, %s)", (audio_id, chapter_id, f"Audio {voice}", audio_hash, content[:180], full_audio))
+            else:
+                cursor.execute(
+                    "UPDATE audios SET chapter_id = %s, title = %s, preview = %s, audio_data = %s "
+                    "WHERE id = %s",
+                    (chapter_id, f"Audio {voice}", content[:180], full_audio, audio_id),
+                )
             cursor.execute("UPDATE chapter_audios SET status = 'ready', audio_id = %s WHERE id = %s", (audio_id, cache_id))
             connection.commit()
             cursor.close()
@@ -1717,7 +1839,21 @@ if __name__ == "__main__":
     ensure_douyin_tables()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "3001"))
-    server = QuietThreadingHTTPServer((host, port), AudioHandler)
+    wait_for_port = os.environ.pop("AUDIO_BACKEND_WAIT_FOR_PORT", None) == "1"
+    bind_attempts = 30 if wait_for_port else 1
+    for attempt in range(bind_attempts):
+        try:
+            server = QuietThreadingHTTPServer((host, port), AudioHandler)
+            break
+        except OSError as error:
+            if (
+                not wait_for_port
+                or getattr(error, "winerror", None) != 10048
+                or attempt == bind_attempts - 1
+            ):
+                raise
+            time.sleep(1)
+    BACKEND_SERVER = server
     threading.Thread(target=auto_generate_missing_audio, daemon=True).start()
     print(f"Audio Story Reader: http://{host}:{port} (edge-tts {edge_tts.__version__})", flush=True)
     server.serve_forever()

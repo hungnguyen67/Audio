@@ -50,16 +50,17 @@ export function groupChapters(chapters, chaptersPerEpisode) {
   for (let start = 0; start < chapters.length; start += chaptersPerEpisode) {
     const group = chapters.slice(start, start + chaptersPerEpisode);
     const firstChapter = group[0];
+    const episodeNumber = firstEpisodeNumber + groups.length;
     const titles = group.map((chapter) => chapter.title || `Chương ${chapter.chapterNumber}`);
     const combinedTitle = group.length === 1
-      ? titles[0]
+      ? `Chương ${episodeNumber}`
       : formatChapterRangeTitle(firstChapter.chapterNumber, group[group.length - 1].chapterNumber);
     const title = combinedTitle.length > 160
       ? `${combinedTitle.slice(0, 157)}...`
       : combinedTitle;
 
     groups.push({
-      chapterNumber: firstEpisodeNumber + groups.length,
+      chapterNumber: episodeNumber,
       title,
       content: group.length === 1
         ? firstChapter.content

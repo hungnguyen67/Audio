@@ -15,7 +15,7 @@ export function LibraryPage() {
   } = useSelector((state) => state.stories);
   const { current } = usePlayer();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const pageSize = 5;
   const orderedStories = current
     ? [
         ...stories.filter((story) => story.id === current.storyId),
@@ -109,10 +109,6 @@ export function LibraryPage() {
             page={page}
             pageSize={pageSize}
             onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPage(1);
-            }}
           />
         )}
       </div>

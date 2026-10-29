@@ -21,32 +21,6 @@ export function ChapterFields() {
           {...bind("story")}
         />
       </div>
-      <div className="chapter-number-title-grid">
-        <div className="form-group">
-          <label className="form-label" htmlFor="chapter-number">
-            Số chương
-          </label>
-          <input
-            id="chapter-number"
-            className="form-input"
-            type="number"
-            min="1"
-            placeholder="Tự động"
-            {...bind("number")}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label" htmlFor="chapter-title">
-            Tiêu đề chương
-          </label>
-          <input
-            id="chapter-title"
-            className="form-input"
-            placeholder="Nhập tiêu đề..."
-            {...bind("title")}
-          />
-        </div>
-      </div>
       <div className="form-group">
         <label className="form-label" htmlFor="chapter-content">
           Nội dung chương

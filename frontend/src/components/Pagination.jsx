@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { Select } from './Select';
 
 function getPageItems(page, pageCount) {
   if (pageCount <= 3) return Array.from({ length: pageCount }, (_, index) => index + 1);
@@ -8,7 +7,7 @@ function getPageItems(page, pageCount) {
   return [1, 'ellipsis-left', page - 1, page, page + 1, 'ellipsis-right', pageCount];
 }
 
-export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChange }) {
+export function Pagination({ total, page, pageSize, onPageChange }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const canPrevious = page > 1;
   const canNext = page < pageCount;
@@ -21,17 +20,6 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
 
   return (
     <div className="pagination-bar">
-      <div className="page-size-control">
-        <Select
-          className="page-size-select"
-          value={pageSize}
-          options={[5, 10, 20].map((size) => ({ value: size, label: size }))}
-          onChange={(value) => onPageSizeChange(Number(value))}
-          ariaLabel="Số dòng mỗi trang"
-        />
-        <span>Rows per page</span>
-      </div>
-
       <div className="page-navigation" aria-label="Phân trang">
         <span className="page-summary">Page {page} of {pageCount}</span>
         <button type="button" aria-label="Trang đầu" disabled={!canPrevious} onClick={() => goTo(1)}>«</button>

@@ -35,11 +35,14 @@ export function useSaveChapters(editor) {
       return toast.error("Thiếu tên truyện", "Vui lòng điền tên truyện trước khi lưu chương.");
     }
 
-    // Một tập gộp: số/tiêu đề/nội dung lấy từ form để người dùng còn chỉnh sửa được.
     const isMergedEpisode = pending.mergedFrom > 0 && pending.chapters.length === 1;
     const items = pending.chapters.map((chapter) =>
       isMergedEpisode
-        ? { number: Number(form.number), title: form.title.trim(), content: form.content.trim() }
+        ? {
+            number: chapter.chapterNumber,
+            title: chapter.title || `Chương ${chapter.chapterNumber}`,
+            content: form.content.trim() || chapter.content,
+          }
         : {
             number: chapter.chapterNumber,
             title: chapter.title || `Chương ${chapter.chapterNumber}`,
@@ -54,7 +57,7 @@ export function useSaveChapters(editor) {
       return isMergedEpisode
         ? toast.error(
             "Thông tin tập chưa hợp lệ",
-            "Hãy kiểm tra số chương, tiêu đề và nội dung của tập đã gộp trước khi lưu.",
+            "Tập đã gộp thiếu số chương hoặc nội dung để lưu.",
           )
         : toast.error(
             "Dữ liệu chương chưa hợp lệ",
@@ -156,17 +159,18 @@ export function useSaveChapters(editor) {
           updateChapter({
             id: editing.id,
             chapterNumber: Number(form.number),
-            title: form.title.trim(),
+            title: form.title.trim() || `Chương ${form.number}`,
             content: form.content.trim(),
           }),
         ).unwrap();
       } else {
         const nextNumber = (story?.chapters || []).reduce((max, c) => Math.max(max, c.number), 0) + 1;
+        const chapterNumber = Number(form.number) || nextNumber;
         await dispatch(
           saveChapter({
             storyId: id,
-            chapterNumber: Number(form.number) || nextNumber,
-            title: form.title.trim() || "Chương mới",
+            chapterNumber,
+            title: `Chương ${chapterNumber}`,
             content: form.content.trim(),
           }),
         ).unwrap();

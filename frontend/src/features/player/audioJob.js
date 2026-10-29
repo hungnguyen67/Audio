@@ -159,20 +159,46 @@ async function appendChunk(sourceBuffer, bytes, signal, audio) {
   audio.dispatchEvent(new Event("progress"));
 }
 
-async function feedProgressiveAudio(audio, mediaSource, sourceBuffer, jobId, signal, onProgress, onReady, onError) {
+async function feedProgressiveAudio(
+  audio,
+  mediaSource,
+  sourceBuffer,
+  jobId,
+  signal,
+  onProgress,
+  onReady,
+  onError,
+  onJobNotFound,
+) {
   let nextChunkIndex = 0;
+  let activeJobId = jobId;
   let hasStarted = false;
 
   try {
     while (true) {
       signal.throwIfAborted();
-      const job = await audioApi.getJob(jobId);
+      let job = await audioApi.getJob(activeJobId);
       signal.throwIfAborted();
-      onProgress(describeProgress(job));
 
       if (job.status === "not_found") {
-        throw new Error("Không tìm thấy tác vụ tạo audio.");
+        const replacement = await onJobNotFound?.();
+        signal.throwIfAborted();
+        if (replacement?.status === "ready") {
+          job = {
+            status: "completed",
+            completedCount: replacement.chunks.length,
+            totalChunks: replacement.chunks.length,
+            completedChunks: replacement.chunks,
+          };
+        } else if (replacement?.jobId) {
+          activeJobId = replacement.jobId;
+          continue;
+        } else {
+          throw new Error("Không tìm thấy tác vụ tạo audio.");
+        }
       }
+
+      onProgress(describeProgress(job));
 
       while (true) {
         const chunk = findAudioChunk(job, nextChunkIndex);
@@ -233,7 +259,7 @@ export async function resolveAudioUrl(chapterId, voice, { signal }) {
 export async function startProgressiveAudio(
   audio,
   jobId,
-  { signal, startAt = 0, onProgress, onError },
+  { signal, startAt = 0, onProgress, onError, onJobNotFound },
 ) {
   if (!MediaSource.isTypeSupported("audio/mpeg")) {
     throw new Error("Trình duyệt này không hỗ trợ phát audio trong lúc tạo.");
@@ -267,6 +293,7 @@ export async function startProgressiveAudio(
         resolveReady();
       },
       onError,
+      onJobNotFound,
     )
       .then(() => {
         if (!readySettled) {
