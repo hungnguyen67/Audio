@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchStories } from "../../entities/stories/storiesSlice";
 import { selectStoryById, selectStoriesStatus } from "../../entities/stories/selectors";
@@ -16,8 +16,11 @@ export function PlayerWindowPage() {
   const story = useSelector(selectStoryById(storyId));
   const { play, status: playbackStatus } = usePlayer();
   const [position, setPosition] = useState(initialPosition);
+  const positionRef = useRef(initialPosition);
   const [starting, setStarting] = useState(false);
   const [started, setStarted] = useState(false);
+  const [autoStartFailed, setAutoStartFailed] = useState(false);
+  const autoStartAttemptedRef = useRef(false);
   const chapter = story?.chapters.find((item) => item.id === chapterId);
 
   useEffect(() => {
@@ -54,6 +57,7 @@ export function PlayerWindowPage() {
         event.data.current?.chapterId === chapterId &&
         !started
       ) {
+        positionRef.current = event.data.positionSeconds;
         setPosition(event.data.positionSeconds);
       }
       if (event.data?.type === "stop-player-window") {
@@ -73,16 +77,29 @@ export function PlayerWindowPage() {
     return () => window.removeEventListener("pagehide", release);
   }, []);
 
-  const startPlayback = async () => {
+  const startPlayback = useCallback(async () => {
     if (!storyId || !chapter || starting) return;
     setStarting(true);
-    const didStart = await play(storyId, chapter, { positionSeconds: position });
-    if (didStart) {
-      setStarted(true);
-      postPlayerWindowMessage({ type: "player-window-started" });
+    try {
+      const didStart = await play(storyId, chapter, {
+        positionSeconds: () => positionRef.current,
+      });
+      if (didStart) {
+        setStarted(true);
+        postPlayerWindowMessage({ type: "player-window-started" });
+      } else {
+        setAutoStartFailed(true);
+      }
+    } finally {
+      setStarting(false);
     }
-    setStarting(false);
-  };
+  }, [chapter, play, starting, storyId]);
+
+  useEffect(() => {
+    if (!chapter || autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    startPlayback();
+  }, [chapter, startPlayback]);
 
   return (
     <main className="player-window-page">
@@ -92,13 +109,13 @@ export function PlayerWindowPage() {
             <h1>Chạm để lắng nghe</h1>
             <p>{`Đã nghe đến tập ${chapter.number}`}</p>
           </header>
-          {!started && (
+          {!started && autoStartFailed && (
             <button type="button" className="btn btn-dark player-window-start" onClick={startPlayback} disabled={starting}>
-              {starting ? "Đang chuẩn bị audio..." : "Bắt đầu nghe"}
+              {starting ? "Đang chuẩn bị audio..." : "Nhấn để bắt đầu nghe"}
             </button>
           )}
           {started && <PlayerCard />}
-          {!started && playbackStatus !== "Vui lòng chọn một chương để bắt đầu nghe" && (
+          {!started && (starting || autoStartFailed) && playbackStatus !== "Vui lòng chọn một chương để bắt đầu nghe" && (
             <p className="player-window-status">{playbackStatus}</p>
           )}
         </>

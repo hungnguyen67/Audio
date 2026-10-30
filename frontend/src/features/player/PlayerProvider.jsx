@@ -134,10 +134,13 @@ export function PlayerProvider({ children }) {
         const saved = await progressApi.getPlaybackState(target.id);
         signal.throwIfAborted();
         latest.current.settings.apply(saved);
-        const startAt = Number.isFinite(options.positionSeconds)
-          ? Math.max(0, options.positionSeconds)
-          : saved.positionSeconds || 0;
         const source = await resolveAudioUrl(target.id, saved.voice, { signal });
+        const requestedPosition = typeof options.positionSeconds === "function"
+          ? options.positionSeconds()
+          : options.positionSeconds;
+        const startAt = Number.isFinite(requestedPosition)
+          ? Math.max(0, requestedPosition)
+          : saved.positionSeconds || 0;
         if (source.jobId) {
           streamingJobRef.current = source.jobId;
           setStatus("Đang chuẩn bị audio để phát liền mạch...");
