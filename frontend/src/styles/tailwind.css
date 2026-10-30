@@ -26,6 +26,37 @@
   background: #94a3b8;
 }
 
+.chapter-list-scroll {
+  scrollbar-width: auto !important;
+  scrollbar-color: auto !important;
+}
+
+.chapter-list-scroll::-webkit-scrollbar {
+  width: 3px !important;
+}
+
+.chapter-list-scroll::-webkit-scrollbar-button,
+.chapter-list-scroll::-webkit-scrollbar-button:single-button,
+.chapter-list-scroll::-webkit-scrollbar-button:double-button,
+.chapter-list-scroll::-webkit-scrollbar-button:vertical,
+.chapter-list-scroll::-webkit-scrollbar-button:horizontal,
+.chapter-list-scroll::-webkit-scrollbar-button:vertical:start:decrement,
+.chapter-list-scroll::-webkit-scrollbar-button:vertical:end:increment,
+.chapter-list-scroll::-webkit-scrollbar-button:horizontal:start:decrement,
+.chapter-list-scroll::-webkit-scrollbar-button:horizontal:end:increment {
+  display: none !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.chapter-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 0 !important;
+}
+
 
 @layer components {
 *,
@@ -1283,10 +1314,11 @@ body {
     border-color 0.14s;
 }
 
-.admin-sidebar-toggle:hover {
+.admin-sidebar-toggle:hover,
+.admin-sidebar-toggle:active {
   color: var(--text);
-  background: #f1f5f9;
-  border-color: var(--border);
+  background: transparent;
+  border-color: transparent;
 }
 
 .admin-sidebar-toggle svg {
@@ -1394,6 +1426,11 @@ body {
   padding: 14px 20px 12px;
   border-bottom: 0;
   background: #fff;
+}
+
+.admin-stories-page .dy-library-toolbar {
+  min-height: unset;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .admin-stories-page .section-title {

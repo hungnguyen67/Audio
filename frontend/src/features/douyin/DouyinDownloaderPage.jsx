@@ -190,24 +190,22 @@ export function DouyinDownloaderPage() {
 
   return (
     <>
-      <div className="page-hero">
-        <div>
-          <h1 className="hero-title">Thư viện video</h1>
-          <p className="hero-sub">Lưu MP4 vào cơ sở dữ liệu và xem trực tiếp trong ứng dụng.</p>
-        </div>
-      </div>
-
-      <section className="dy-library section-card" aria-label="Thư viện video Douyin">
-        <div className="dy-library-toolbar">
-          <div className="dy-library-tabs">
-            <div className="dy-library-tab is-active" aria-current="page">
-              <FolderOpen size={16} aria-hidden="true" />
-              Video đã lưu
-              <span className="dy-library-count">{videos.length}</span>
-            </div>
+      <div className="admin-stories-page">
+        <div className="page-hero">
+          <div>
+            <h1 className="hero-title">Thư viện video</h1>
+            <p className="hero-sub">Lưu MP4 vào cơ sở dữ liệu và xem trực tiếp trong ứng dụng.</p>
           </div>
+        </div>
 
-          <div className="dy-library-actions">
+        <section className="dy-library section-card" aria-label="Thư viện video Douyin">
+          <div className="section-head dy-library-toolbar">
+            <div>
+              <div className="section-title">Danh sách video</div>
+              <div className="section-sub">{videos.length} video đã lưu</div>
+            </div>
+
+            <div className="dy-library-actions">
               {selectedIds.length > 0 && (
                 <div className="dy-move-actions">
                   <Select
@@ -266,9 +264,9 @@ export function DouyinDownloaderPage() {
                 Dán link
               </button>
             </div>
-        </div>
+          </div>
 
-        <div className="dy-library-content">
+          <div className="dy-library-content">
             {currentFolder && (
               <div className="dy-folder-breadcrumb">
                 <FolderOpen size={17} aria-hidden="true" />
@@ -379,8 +377,9 @@ export function DouyinDownloaderPage() {
                 )}
               </>
             )}
-        </div>
-      </section>
+          </div>
+        </section>
+      </div>
 
       {isPasteModalOpen && (
         <div

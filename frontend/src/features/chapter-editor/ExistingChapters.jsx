@@ -104,11 +104,11 @@ export function ExistingChapters() {
             : `Xóa đã chọn (${state.checkedIds.length})`}
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl rounded-tr-none rounded-b-none border border-slate-100 pr-1.5 [scrollbar-gutter:stable]">
+      <div className="chapter-list-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl rounded-tr-none rounded-b-none border border-slate-100 pr-1.5 [scrollbar-gutter:stable]">
         {chapters.map((chapter) => (
           <div
             key={chapter.id}
-            className="flex min-h-[38px] items-center gap-3 rounded-[7px] border-b border-slate-100 px-2.5 py-2 text-[13px] text-slate-700 transition-colors last:border-b-0 hover:bg-slate-50"
+            className="flex min-h-[38px] items-center gap-3 rounded-none border-b border-slate-100 px-2.5 py-2 text-[13px] text-slate-700 transition-colors last:border-b-0 hover:bg-slate-50"
             onPointerEnter={(event) => {
               if (dragSelection.current !== null && event.buttons === 1) {
                 setChecked(chapter.id, dragSelection.current);
@@ -120,7 +120,7 @@ export function ExistingChapters() {
               aria-label={`Chọn chương ${chapter.number}: ${chapter.title}`}
               checked={checked.has(chapter.id)}
               disabled={deleting}
-              className="size-4 shrink-0 cursor-pointer rounded border border-slate-300 accent-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-55"
+              className="size-4 shrink-0 cursor-pointer rounded border border-slate-300 accent-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-55"
               onPointerDown={(event) => {
                 if (event.button !== 0 || deleting) return;
                 event.preventDefault();
