@@ -2,11 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { toast } from "../../components/Toast";
-import { deleteChapter, fetchStories } from "../../entities/stories/storiesSlice";
+import {
+  deleteChapter,
+  fetchStories,
+} from "../../entities/stories/storiesSlice";
 import { useEditorContext } from "./EditorContext";
 
 export function ExistingChapters() {
-  const { state, story, dispatch: editorDispatch, actions } = useEditorContext();
+  const {
+    state,
+    story,
+    dispatch: editorDispatch,
+    actions,
+  } = useEditorContext();
   const dispatch = useDispatch();
   const dragSelection = useRef(null); // true/false khi đang kéo chọn, null khi không kéo
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -32,7 +40,8 @@ export function ExistingChapters() {
 
   if (!chapters.length) return null;
 
-  const setChecked = (id, value) => editorDispatch({ type: "SET_CHECKED", id, checked: value });
+  const setChecked = (id, value) =>
+    editorDispatch({ type: "SET_CHECKED", id, checked: value });
 
   const deleteSelected = async () => {
     const targets = chapters.filter((chapter) => checked.has(chapter.id));
@@ -49,7 +58,10 @@ export function ExistingChapters() {
           failures.push({ chapter, error });
         }
       }
-      editorDispatch({ type: "SET_CHECKED_IDS", ids: failures.map(({ chapter }) => chapter.id) });
+      editorDispatch({
+        type: "SET_CHECKED_IDS",
+        ids: failures.map(({ chapter }) => chapter.id),
+      });
       if (state.editing && deletedIds.includes(state.editing.id)) {
         editorDispatch({ type: "EDIT_DELETED" });
       }
@@ -78,23 +90,25 @@ export function ExistingChapters() {
   };
 
   return (
-    <div className="ch-sub-list">
-      <div className="ch-sub-head ch-sub-head-row">
+    <div className="mt-0 flex h-full min-h-0 flex-col border-l border-slate-200 pl-5 max-[860px]:border-l-0 max-[860px]:border-t max-[860px]:px-0 max-[860px]:pt-3.5">
+      <div className="mb-2 flex items-center justify-between gap-3 pb-0.5 text-xs font-bold uppercase tracking-wider text-slate-600">
         <span>Các chương hiện có</span>
         <button
           type="button"
-          className="btn-small-action"
+          className="h-[30px] shrink-0 cursor-pointer rounded-[7px] border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 [font-family:inherit] transition-colors hover:not-disabled:border-slate-300 hover:not-disabled:bg-slate-50 hover:not-disabled:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
           onClick={() => setConfirmOpen(true)}
           disabled={deleting || !state.checkedIds.length}
         >
-          {deleting ? "Đang xóa..." : `Xóa đã chọn (${state.checkedIds.length})`}
+          {deleting
+            ? "Đang xóa..."
+            : `Xóa đã chọn (${state.checkedIds.length})`}
         </button>
       </div>
-      <div className="ch-sub-items">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl rounded-tr-none rounded-b-none border border-slate-100 pr-1.5 [scrollbar-gutter:stable]">
         {chapters.map((chapter) => (
           <div
             key={chapter.id}
-            className="ch-sub-item"
+            className="flex min-h-[38px] items-center gap-3 rounded-[7px] border-b border-slate-100 px-2.5 py-2 text-[13px] text-slate-700 transition-colors last:border-b-0 hover:bg-slate-50"
             onPointerEnter={(event) => {
               if (dragSelection.current !== null && event.buttons === 1) {
                 setChecked(chapter.id, dragSelection.current);
@@ -106,6 +120,7 @@ export function ExistingChapters() {
               aria-label={`Chọn chương ${chapter.number}: ${chapter.title}`}
               checked={checked.has(chapter.id)}
               disabled={deleting}
+              className="size-4 shrink-0 cursor-pointer rounded border border-slate-300 accent-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-55"
               onPointerDown={(event) => {
                 if (event.button !== 0 || deleting) return;
                 event.preventDefault();
@@ -115,13 +130,20 @@ export function ExistingChapters() {
               }}
               onClick={(event) => {
                 event.preventDefault();
-                if (event.detail === 0) editorDispatch({ type: "TOGGLE_CHECK", id: chapter.id }); // bàn phím
+                if (event.detail === 0)
+                  editorDispatch({ type: "TOGGLE_CHECK", id: chapter.id }); // bàn phím
               }}
             />
-            <span className="ch-sub-num">{String(chapter.number).padStart(2, "0")}</span>
+            <span className="w-6 shrink-0 text-xs tabular-nums text-slate-400">
+              {String(chapter.number).padStart(2, "0")}
+            </span>
             <button
               type="button"
-              className={`ch-sub-edit-title${state.editing?.id === chapter.id ? " active" : ""}`}
+              className={`min-w-0 flex-1 cursor-pointer truncate border-0 bg-transparent p-0 text-left text-[13px] text-slate-600 [font-family:inherit] hover:text-slate-900 ${
+                state.editing?.id === chapter.id
+                  ? "font-bold text-slate-900"
+                  : ""
+              }`}
               onClick={() => actions.openChapter(story, chapter)}
             >
               {chapter.title}

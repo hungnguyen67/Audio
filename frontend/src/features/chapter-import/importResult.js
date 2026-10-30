@@ -29,7 +29,7 @@ export function buildUrlImportResult({ fetched, from, to, failure, source, form,
     const merged = mergeChapters(fetched, from);
     return {
       pending: { chapters: [merged], mergedFrom: fetched.length },
-      patch: { ...storyPatch, number: String(from), title: merged.title, content: merged.content },
+      patch: { ...storyPatch, content: merged.content },
       message: failure
         ? `Đã gộp ${fetched.length} chương thành 1 tập; dừng tại chương ${from + fetched.length}: ${failure.message}`
         : `Đã gộp ${fetched.length} chương thành 1 tập (số ${from}).`,
@@ -38,10 +38,12 @@ export function buildUrlImportResult({ fetched, from, to, failure, source, form,
 
   const chapter = fetched[0];
   return {
+    pending: {
+      chapters: [{ ...chapter, title: `Chương ${chapter.chapterNumber}` }],
+      mergedFrom: 0,
+    },
     patch: {
       ...storyPatch,
-      number: String(chapter.chapterNumber),
-      title: chapter.title,
       content: chapter.content,
     },
     message: `Đã lấy ${chapter.content.length.toLocaleString("vi-VN")} ký tự. Hãy kiểm tra rồi bấm Lưu.`,

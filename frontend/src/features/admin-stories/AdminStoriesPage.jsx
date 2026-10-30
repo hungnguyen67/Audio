@@ -37,26 +37,28 @@ export function AdminStoriesPage() {
 
   return (
     <>
-      <div className="page-hero">
-        <div>
-          <h1 className="hero-title">Kho truyện audio</h1>
-          <p className="hero-sub">
-            Đang có {stories.length} truyện. Mở truyện để quản lý các tập hoặc tạo truyện mới.
-          </p>
+      <div className="admin-stories-page">
+        <div className="page-hero">
+          <div>
+            <h1 className="hero-title">Kho truyện audio</h1>
+            <p className="hero-sub">
+              Đang có {stories.length} truyện. Mở truyện để quản lý các tập hoặc tạo truyện mới.
+            </p>
+          </div>
+          <button className="btn btn-dark" onClick={editor.actions.openNew}>
+            Tạo truyện
+          </button>
         </div>
-        <button className="btn btn-dark" onClick={editor.actions.openNew}>
-          Tạo truyện
-        </button>
-      </div>
 
-      <StoriesTable
-        stories={stories}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        onOpenStory={editor.actions.openStory}
-        onDeleteStory={setStoryToDelete}
-      />
+        <StoriesTable
+          stories={stories}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onOpenStory={editor.actions.openStory}
+          onDeleteStory={setStoryToDelete}
+        />
+      </div>
 
       <ChapterEditorModal editor={editor} />
 

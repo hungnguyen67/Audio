@@ -30,7 +30,7 @@ export function Select({
       return;
     }
     const bounds = selectRef.current?.getBoundingClientRect();
-    const estimatedHeight = Math.min(options.length * 40 + 8, 260);
+    const estimatedHeight = Math.min(options.length * 32 + 8, 260);
     const shouldOpenUp = bounds
       && window.innerHeight - bounds.bottom < estimatedHeight
       && bounds.top > estimatedHeight;

@@ -25,7 +25,7 @@ export function useChapterEditor() {
         try {
           const data = await chaptersApi.get(chapter.id);
           if (token === openToken.current) {
-            dispatch({ type: "PATCH_FORM", patch: { title: data.title, content: data.content } });
+            dispatch({ type: "PATCH_FORM", patch: { content: data.content } });
           }
         } catch (error) {
           if (token === openToken.current) dispatch({ type: "SET_STATUS", status: error.message });

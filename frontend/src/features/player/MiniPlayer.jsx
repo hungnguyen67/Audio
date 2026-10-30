@@ -1,11 +1,12 @@
 import { Link, useMatch } from "react-router-dom";
 import { X } from "lucide-react";
 import { AudioControls } from "./AudioControls";
+import { PopoutPlayerButton } from "./PopoutPlayerButton";
 import { usePlayer } from "./usePlayer";
 
 /** Hiện ở mọi trang trừ trang truyện (nơi đã có PlayerCard). */
 export function MiniPlayer() {
-  const { current, chapter, stop } = usePlayer();
+  const { current, chapter, stop, externalPlayerActive } = usePlayer();
   const onStoryPage = useMatch("/story/:storyId");
   if (!current || !chapter || onStoryPage) return null;
 
@@ -28,7 +29,14 @@ export function MiniPlayer() {
       >
         <X size={18} strokeWidth={2} aria-hidden="true" />
       </button>
-      <AudioControls />
+      {externalPlayerActive ? (
+        <span className="mini-player-external-status">Đang phát ở cửa sổ nghe riêng</span>
+      ) : (
+        <>
+          <PopoutPlayerButton />
+          <AudioControls />
+        </>
+      )}
     </section>
   );
 }

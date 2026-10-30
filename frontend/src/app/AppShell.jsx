@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
-import { Menu } from "lucide-react";
 import { useStoriesAutoRefresh } from "../entities/stories/useStoriesAutoRefresh";
-import { PlayerProvider } from "../features/player/PlayerProvider";
 import { MiniPlayer } from "../features/player/MiniPlayer";
 import { Sidebar } from "./Sidebar";
 
@@ -11,7 +9,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 860px)").matches);
 
   return (
-    <PlayerProvider>
+    <>
       <div className={`admin-layout${collapsed ? " is-sidebar-collapsed" : ""}`}>
         <Sidebar />
         <div className="admin-main">
@@ -26,7 +24,18 @@ export function AppShell() {
                   aria-expanded={!collapsed}
                   onClick={() => setCollapsed((value) => !value)}
                 >
-                  <Menu size={22} strokeWidth={2.2} aria-hidden="true" />
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M3 6h18M3 12h18M3 18h18" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -39,6 +48,6 @@ export function AppShell() {
         </div>
       </div>
       <MiniPlayer />
-    </PlayerProvider>
+    </>
   );
 }

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { selectStoriesStatus, selectStoryById } from "../../entities/stories/selectors";
 import { PlayerCard } from "../player/PlayerCard";
+import { PopoutPlayerButton } from "../player/PopoutPlayerButton";
 import { usePlayer } from "../player/usePlayer";
 import { StoryChapterList } from "./StoryChapterList";
 import { useStoryProgress } from "./useStoryProgress";
@@ -48,14 +49,17 @@ export function StoryPage() {
   const visibleChapters = story.chapters.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <>
-      <div className="page-hero">
+    <section className="story-page">
+      <div className="page-hero story-page-hero">
         <div>
           <h1 className="hero-title">Chạm để lắng nghe</h1>
           <p className="hero-sub">
             {lastListened ? `Đã nghe đến tập ${lastListened}` : "Chưa nghe tập nào"}
           </p>
         </div>
+        {!player.externalPlayerActive && (
+          <PopoutPlayerButton className="btn btn-dark story-page-popout-button" />
+        )}
       </div>
 
       <div className="story-wrap">
@@ -73,6 +77,6 @@ export function StoryPage() {
           <PlayerCard />
         </div>
       </div>
-    </>
+    </section>
   );
 }

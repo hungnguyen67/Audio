@@ -1,4 +1,4 @@
-const emptyForm = { story: "", number: "", title: "", content: "" };
+const emptyForm = { story: "", content: "" };
 const emptyPending = { chapters: [], mergedFrom: 0 };
 
 export const initialEditorState = {
@@ -25,8 +25,6 @@ export function editorReducer(state, action) {
         editing: chapter ?? null,
         form: {
           story: story?.title ?? "",
-          number: chapter ? String(chapter.number) : "",
-          title: chapter?.title ?? "",
           content: "",
         },
       };
@@ -92,7 +90,7 @@ export function editorReducer(state, action) {
         editing: null,
         pending: emptyPending,
         status: action.status,
-        form: { ...state.form, number: "", title: "", content: "" },
+        form: { ...state.form, content: "" },
       };
     case "SAVE_END":
       return { ...state, saving: false, status: action.status ?? state.status };

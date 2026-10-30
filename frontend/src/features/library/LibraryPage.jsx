@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import { ArrowRight, BookOpen, Headphones } from "lucide-react";
 import { fetchStories } from "../../entities/stories/storiesSlice";
 import { Pagination } from "../../components/Pagination";
 import { usePlayer } from "../player/usePlayer";
 
 export function LibraryPage() {
-  const navigate = useNavigate();
   const dispatch = useDispatch();
   const {
     items: stories,
@@ -15,7 +15,7 @@ export function LibraryPage() {
   } = useSelector((state) => state.stories);
   const { current } = usePlayer();
   const [page, setPage] = useState(1);
-  const pageSize = 5;
+  const pageSize = 3;
   const orderedStories = current
     ? [
         ...stories.filter((story) => story.id === current.storyId),
@@ -41,77 +41,82 @@ export function LibraryPage() {
         <div>
           <h1 className="hero-title">Khám phá truyện</h1>
           <p className="hero-sub">
-            Chọn truyện để xem danh sách chương và nghe ngay.
+            Tìm câu chuyện bạn yêu thích và bắt đầu lắng nghe.
           </p>
         </div>
       </div>
 
-      <div className="section-card">
-        <div className="section-head">
-          <div>
-            <div className="section-title">Danh sách truyện</div>
-            <div className="section-sub">{stories.length} đầu truyện</div>
+      <section className="library-catalog" aria-label="Thư viện truyện audio">
+        <div className="library-catalog-head">
+          <div className="library-catalog-heading">
+            <div className="section-title">Thư viện truyện</div>
+            <div className="section-sub">{stories.length} truyện audio</div>
           </div>
         </div>
 
-        <div className="lib-tbl">
-          <div className="dt-head">
-            <span>#</span>
-            <span>Tên truyện</span>
-            <span>Số chương</span>
+        {visibleStories.length ? (
+          <div className="library-story-grid">
+            {visibleStories.map((story, index) => {
+              const isCurrentStory = story.id === current?.storyId;
+              return (
+                <Link
+                  key={story.id}
+                  to={`/story/${story.id}`}
+                  className={`library-story-card${isCurrentStory ? " is-current" : ""}`}
+                >
+                  <div className={`library-story-art art-${index % 4}`}>
+                    <Headphones size={24} strokeWidth={1.7} aria-hidden="true" />
+                    <span>{String((page - 1) * pageSize + index + 1).padStart(2, "0")}</span>
+                  </div>
+                  <div className="library-story-info">
+                    <span className="library-story-label">
+                      {isCurrentStory ? "NGHE GẦN ĐÂY" : "TRUYỆN AUDIO"}
+                    </span>
+                    <h2>{story.title}</h2>
+                    <span className="library-story-chapters">
+                      <BookOpen size={14} aria-hidden="true" />
+                      {story.chapters.length} chương
+                    </span>
+                  </div>
+                  <span className="library-story-open">
+                    {isCurrentStory ? "Nghe tiếp" : "Mở truyện"}
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </span>
+                </Link>
+              );
+            })}
           </div>
-
-          {visibleStories.map((story, i) => (
-            <div
-              key={story.id}
-              className="dt-row"
-              role="link"
-              tabIndex={0}
-              onClick={() => navigate(`/story/${story.id}`)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  navigate(`/story/${story.id}`);
-                }
-              }}
-            >
-              <span className="row-num">
-                {String((page - 1) * pageSize + i + 1).padStart(2, "0")}
-              </span>
-              <div className="row-title">{story.title}</div>
-              <span className="row-meta">{story.chapters.length} chương</span>
-            </div>
-          ))}
-
-          {!visibleStories.length &&
-            (error || status === "loading" || status === "idle" ? (
-              <div
-                className={`library-empty${error ? " has-error" : ""}`}
-                role={error ? "alert" : "status"}
-              >
-                {error || "Đang tải thư viện truyện..."}
-              </div>
+        ) : (
+          <div
+            className={`library-empty${error ? " has-error" : ""}`}
+            role={error ? "alert" : "status"}
+          >
+            {error ? (
+              error
+            ) : status === "loading" || status === "idle" ? (
+              "Đang tải thư viện truyện..."
             ) : (
-              <div className="stories-empty-state" role="status">
-                <div className="stories-empty-title">
-                  Thư viện chưa có truyện nào
-                </div>
+              <>
+                <div className="stories-empty-title">Thư viện chưa có truyện nào</div>
                 <p>
                   Truyện được thêm vào hệ thống sẽ xuất hiện tại đây để bạn chọn
                   và bắt đầu nghe.
                 </p>
-              </div>
-            ))}
-        </div>
+              </>
+            )}
+          </div>
+        )}
+
         {stories.length > 0 && (
           <Pagination
             total={stories.length}
             page={page}
             pageSize={pageSize}
             onPageChange={setPage}
+            summaryOnLeft
           />
         )}
-      </div>
+      </section>
     </section>
   );
 }

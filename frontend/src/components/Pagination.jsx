@@ -7,7 +7,13 @@ function getPageItems(page, pageCount) {
   return [1, 'ellipsis-left', page - 1, page, page + 1, 'ellipsis-right', pageCount];
 }
 
-export function Pagination({ total, page, pageSize, onPageChange }) {
+export function Pagination({
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  summaryOnLeft = false,
+}) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const canPrevious = page > 1;
   const canNext = page < pageCount;
@@ -19,9 +25,14 @@ export function Pagination({ total, page, pageSize, onPageChange }) {
   const goTo = (nextPage) => onPageChange(Math.min(pageCount, Math.max(1, nextPage)));
 
   return (
-    <div className="pagination-bar">
-      <div className="page-navigation" aria-label="Phân trang">
+    <div className={`pagination-bar${summaryOnLeft ? " summary-left" : ""}`}>
+      {summaryOnLeft && (
         <span className="page-summary">Page {page} of {pageCount}</span>
+      )}
+      <div className="page-navigation" aria-label="Phân trang">
+        {!summaryOnLeft && (
+          <span className="page-summary">Page {page} of {pageCount}</span>
+        )}
         <button type="button" aria-label="Trang đầu" disabled={!canPrevious} onClick={() => goTo(1)}>«</button>
         <button type="button" aria-label="Trang trước" disabled={!canPrevious} onClick={() => goTo(page - 1)}>‹</button>
         {getPageItems(page, pageCount).map((item) => item.startsWith?.('ellipsis')

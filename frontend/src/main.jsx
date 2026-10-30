@@ -3,9 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import "./styles/index.css";
-import "./styles/player.css";
-import "./styles/editor.css";
+import "./styles/tailwind.css";
 import { store } from "./app/store";
 import { App } from "./app/App";
 

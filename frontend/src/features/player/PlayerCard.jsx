@@ -5,34 +5,40 @@ import { usePlayer } from "./usePlayer";
 
 /** Bản đầy đủ, hiển thị trong trang truyện. Mọi state lấy từ context. */
 export function PlayerCard() {
-  const { status, settings, changeVoice } = usePlayer();
+  const { status, settings, changeVoice, externalPlayerActive } = usePlayer();
 
   return (
     <div className="player-card">
       <div className="player-label">Đang phát</div>
       <div className="player-status">{status}</div>
 
-      <AudioControls />
+      {externalPlayerActive ? (
+        <p className="player-external-status">Audio đang phát trong cửa sổ nghe riêng.</p>
+      ) : (
+        <>
+          <AudioControls />
 
-      <div className="ctrl-row">
-        <div className="ctrl-col">
-          <label className="ctrl-label">Giọng đọc</label>
-          <Select value={settings.voice} options={VOICES} onChange={changeVoice} />
-        </div>
-        <div className="ctrl-col">
-          <label className="ctrl-label">Tốc độ</label>
-          <Select
-            value={settings.speed}
-            options={SPEEDS}
-            onChange={(value) => settings.setSpeed(Number(value))}
-          />
-        </div>
-      </div>
+          <div className="ctrl-row">
+            <div className="ctrl-col">
+              <label className="ctrl-label">Giọng đọc</label>
+              <Select value={settings.voice} options={VOICES} onChange={changeVoice} />
+            </div>
+            <div className="ctrl-col">
+              <label className="ctrl-label">Tốc độ</label>
+              <Select
+                value={settings.speed}
+                options={SPEEDS}
+                onChange={(value) => settings.setSpeed(Number(value))}
+              />
+            </div>
+          </div>
 
-      <div className="audio-actions-row">
-        <AudioVolume />
-        <SeekButtons />
-      </div>
+          <div className="audio-actions-row">
+            <AudioVolume />
+            <SeekButtons />
+          </div>
+        </>
+      )}
     </div>
   );
 }

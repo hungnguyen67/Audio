@@ -45,8 +45,10 @@ export function useSaveChapters(editor) {
           }
         : {
             number: chapter.chapterNumber,
-            title: chapter.title || `Chương ${chapter.chapterNumber}`,
-            content: chapter.content,
+            title: `Chương ${chapter.chapterNumber}`,
+            content: pending.chapters.length === 1 && form.content.trim()
+              ? form.content.trim()
+              : chapter.content,
           },
     );
     const invalid = items.some(
@@ -158,19 +160,18 @@ export function useSaveChapters(editor) {
         await dispatch(
           updateChapter({
             id: editing.id,
-            chapterNumber: Number(form.number),
-            title: form.title.trim() || `Chương ${form.number}`,
+            chapterNumber: editing.number,
+            title: editing.title || `Chương ${editing.number}`,
             content: form.content.trim(),
           }),
         ).unwrap();
       } else {
         const nextNumber = (story?.chapters || []).reduce((max, c) => Math.max(max, c.number), 0) + 1;
-        const chapterNumber = Number(form.number) || nextNumber;
         await dispatch(
           saveChapter({
             storyId: id,
-            chapterNumber,
-            title: `Chương ${chapterNumber}`,
+            chapterNumber: nextNumber,
+            title: `Chương ${nextNumber}`,
             content: form.content.trim(),
           }),
         ).unwrap();

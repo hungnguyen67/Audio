@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { TxtImportPanel } from "../chapter-import/TxtImportPanel";
 import { UrlImportPanel } from "../chapter-import/UrlImportPanel";
 import { ChapterFields } from "./ChapterFields";
@@ -14,6 +15,7 @@ export function ChapterEditorModal({ editor }) {
 
   const title = state.editing ? "Sửa chương" : state.storyId ? "Thêm chương" : "Tạo truyện mới";
   const single = story ? "" : " form-panel-single";
+  const editing = state.editing ? " form-panel-editing" : "";
 
   return (
     <EditorContext.Provider value={editor}>
@@ -24,10 +26,30 @@ export function ChapterEditorModal({ editor }) {
           if (event.target === event.currentTarget && !busy) actions.close();
         }}
       >
-        <div className={`form-panel${single}`}>
-          <div className="form-panel-title">{title}</div>
-          <div className={`form-modal-grid${story ? "" : " form-modal-grid-single"}`}>
-            <div className="form-modal-fields">
+        <div
+          className={`form-panel${single}${editing} h-[640px] max-[860px]:h-auto`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="chapter-editor-title"
+        >
+          <header className="form-panel-header">
+            <h2 className="form-panel-title" id="chapter-editor-title">
+              {title}
+            </h2>
+            <button
+              type="button"
+              className="form-panel-close"
+              aria-label="Đóng cửa sổ"
+              onClick={actions.close}
+              disabled={busy}
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+          </header>
+          <div
+            className={`form-modal-grid${story ? "" : " form-modal-grid-single"} flex-1 items-stretch overflow-y-hidden max-[860px]:overflow-y-auto`}
+          >
+            <div className="form-modal-fields flex h-full min-h-0 flex-col">
               {!state.editing && (
                 <div className="form-group">
                   <UrlImportPanel />

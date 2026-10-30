@@ -39,6 +39,7 @@ export function StoryChapterList({
         page={page}
         pageSize={pageSize}
         onPageChange={onPageChange}
+        summaryOnLeft
       />
     </div>
   );

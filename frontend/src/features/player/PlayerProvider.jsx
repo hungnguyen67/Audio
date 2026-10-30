@@ -5,6 +5,7 @@ import { progressApi } from "../../api/progress";
 import { selectStoryById } from "../../entities/stories/selectors";
 import { resolveAudioUrl, startProgressiveAudio } from "./audioJob";
 import { IDLE_STATUS } from "./constants";
+import { PLAYER_WINDOW_CHANNEL, postPlayerWindowMessage } from "./playerWindow";
 import { usePlaybackPersistence } from "./usePlaybackPersistence";
 import { usePlaybackSettings } from "./usePlaybackSettings";
 
@@ -37,6 +38,7 @@ export function PlayerProvider({ children }) {
   const audio = useMemo(() => new Audio(), []);
   const [current, setCurrent] = useState(null); // { storyId, chapterId }
   const [status, setStatus] = useState(IDLE_STATUS);
+  const [externalPlayerActive, setExternalPlayerActive] = useState(false);
   const settings = usePlaybackSettings(audio);
 
   const story = useSelector(selectStoryById(current?.storyId));
@@ -49,18 +51,69 @@ export function PlayerProvider({ children }) {
   const playbackStartedRef = useRef(false);
   const playbackErrorRef = useRef(false);
   const generationStatusRef = useRef(null);
+  const externalPlayerActiveRef = useRef(false);
   const persistence = usePlaybackPersistence({ audio, loadedChapterIdRef, settings });
 
   const latest = useRef({});
   latest.current = { story, current, settings };
+
+  useEffect(() => {
+    if (window.location.pathname === "/player-window" || !current) return undefined;
+    let lastSentAt = 0;
+    const sendState = () => {
+      const now = Date.now();
+      if (now - lastSentAt < 700) return;
+      lastSentAt = now;
+      postPlayerWindowMessage({
+        type: "playback-state",
+        current,
+        positionSeconds: audio.currentTime || 0,
+      });
+    };
+    audio.addEventListener("timeupdate", sendState);
+    sendState();
+    return () => audio.removeEventListener("timeupdate", sendState);
+  }, [audio, current]);
 
   const cancelPending = useCallback(() => {
     requestRef.current?.abort();
     clearTimeout(nextTimerRef.current);
   }, []);
 
+  const setExternalPlayer = useCallback((active) => {
+    externalPlayerActiveRef.current = active;
+    setExternalPlayerActive(active);
+  }, []);
+
+  useEffect(() => {
+    if (window.location.pathname === "/player-window" || !("BroadcastChannel" in window)) {
+      return undefined;
+    }
+    const channel = new BroadcastChannel(PLAYER_WINDOW_CHANNEL);
+    const onMessage = (event) => {
+      if (event.data?.type === "player-window-started") {
+        audio.pause();
+        setExternalPlayer(true);
+        setStatus("Đang phát trong cửa sổ nghe riêng.");
+      } else if (event.data?.type === "player-window-closed") {
+        setExternalPlayer(false);
+      }
+    };
+    channel.addEventListener("message", onMessage);
+    return () => {
+      channel.removeEventListener("message", onMessage);
+      channel.close();
+    };
+  }, [audio, setExternalPlayer]);
+
   const play = useCallback(
-    async (storyId, target) => {
+    async (storyId, target, options = {}) => {
+      if (externalPlayerActiveRef.current && "BroadcastChannel" in window) {
+        const channel = new BroadcastChannel(PLAYER_WINDOW_CHANNEL);
+        channel.postMessage({ type: "stop-player-window" });
+        channel.close();
+        setExternalPlayer(false);
+      }
       persistence.flush(); // lưu vị trí chương đang nghe trước khi chuyển
       cancelPending();
       const controller = new AbortController();
@@ -81,13 +134,16 @@ export function PlayerProvider({ children }) {
         const saved = await progressApi.getPlaybackState(target.id);
         signal.throwIfAborted();
         latest.current.settings.apply(saved);
+        const startAt = Number.isFinite(options.positionSeconds)
+          ? Math.max(0, options.positionSeconds)
+          : saved.positionSeconds || 0;
         const source = await resolveAudioUrl(target.id, saved.voice, { signal });
         if (source.jobId) {
           streamingJobRef.current = source.jobId;
           setStatus("Đang chuẩn bị audio để phát liền mạch...");
           const { feedPromise } = await startProgressiveAudio(audio, source.jobId, {
             signal,
-            startAt: saved.positionSeconds || 0,
+            startAt,
             onProgress: (progress) => {
               generationStatusRef.current = `Chương ${target.number} · ${progress}`;
               setStatus(
@@ -118,19 +174,28 @@ export function PlayerProvider({ children }) {
             });
           loadedChapterIdRef.current = target.id;
           playbackStartedRef.current = true;
+          return true;
         } else {
           setStatus("Đang phát toàn bộ tập...");
-          const started = await loadAndPlay(audio, source.url, saved.positionSeconds || 0, signal);
+          const started = await loadAndPlay(audio, source.url, startAt, signal);
           if (started) loadedChapterIdRef.current = target.id;
+          return started;
         }
       } catch (error) {
         if (!signal.aborted) setStatus(error.message);
+        return false;
       }
     },
-    [audio, cancelPending, persistence],
+    [audio, cancelPending, persistence, setExternalPlayer],
   );
 
   const stop = useCallback(() => {
+    if (externalPlayerActiveRef.current && "BroadcastChannel" in window) {
+      const channel = new BroadcastChannel(PLAYER_WINDOW_CHANNEL);
+      channel.postMessage({ type: "stop-player-window" });
+      channel.close();
+      setExternalPlayer(false);
+    }
     persistence.flush();
     cancelPending();
     streamingJobRef.current = null;
@@ -143,7 +208,7 @@ export function PlayerProvider({ children }) {
     loadedChapterIdRef.current = null;
     setCurrent(null);
     setStatus(IDLE_STATUS);
-  }, [audio, cancelPending, persistence]);
+  }, [audio, cancelPending, persistence, setExternalPlayer]);
 
   const seekBy = useCallback(
     (seconds) => {
@@ -208,8 +273,19 @@ export function PlayerProvider({ children }) {
   }, [audio, play]);
 
   const value = useMemo(
-    () => ({ audio, current, chapter, status, settings, play, stop, seekBy, changeVoice }),
-    [audio, current, chapter, status, settings, play, stop, seekBy, changeVoice],
+    () => ({
+      audio,
+      current,
+      chapter,
+      status,
+      settings,
+      play,
+      stop,
+      seekBy,
+      changeVoice,
+      externalPlayerActive,
+    }),
+    [audio, current, chapter, status, settings, play, stop, seekBy, changeVoice, externalPlayerActive],
   );
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
