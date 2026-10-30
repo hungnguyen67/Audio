@@ -95,6 +95,16 @@ export function PlayerProvider({ children }) {
         audio.pause();
         setExternalPlayer(true);
         setStatus("Đang phát trong cửa sổ nghe riêng.");
+      } else if (event.data?.type === "player-window-chapter-changed") {
+        const nextCurrent = event.data.current;
+        const activeCurrent = latest.current.current;
+        if (
+          externalPlayerActiveRef.current &&
+          nextCurrent?.storyId === activeCurrent?.storyId &&
+          nextCurrent?.chapterId
+        ) {
+          setCurrent(nextCurrent);
+        }
       } else if (event.data?.type === "player-window-closed") {
         setExternalPlayer(false);
       }

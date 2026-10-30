@@ -14,7 +14,12 @@ export function PlayerWindowPage() {
   const dispatch = useDispatch();
   const status = useSelector(selectStoriesStatus);
   const story = useSelector(selectStoryById(storyId));
-  const { play, status: playbackStatus } = usePlayer();
+  const {
+    play,
+    status: playbackStatus,
+    current: playbackCurrent,
+    chapter: playbackChapter,
+  } = usePlayer();
   const [position, setPosition] = useState(initialPosition);
   const positionRef = useRef(initialPosition);
   const [starting, setStarting] = useState(false);
@@ -77,6 +82,14 @@ export function PlayerWindowPage() {
     return () => window.removeEventListener("pagehide", release);
   }, []);
 
+  useEffect(() => {
+    if (!started || !playbackCurrent) return;
+    postPlayerWindowMessage({
+      type: "player-window-chapter-changed",
+      current: playbackCurrent,
+    });
+  }, [playbackCurrent, started]);
+
   const startPlayback = useCallback(async () => {
     if (!storyId || !chapter || starting) return;
     setStarting(true);
@@ -101,13 +114,15 @@ export function PlayerWindowPage() {
     startPlayback();
   }, [chapter, startPlayback]);
 
+  const displayedChapter = playbackChapter ?? chapter;
+
   return (
     <main className="player-window-page">
       {chapter ? (
         <>
           <header className="player-window-heading">
             <h1>Chạm để lắng nghe</h1>
-            <p>{`Đã nghe đến tập ${chapter.number}`}</p>
+            <p>{`Đã nghe đến tập ${displayedChapter.number}`}</p>
           </header>
           {!started && autoStartFailed && (
             <button type="button" className="btn btn-dark player-window-start" onClick={startPlayback} disabled={starting}>
