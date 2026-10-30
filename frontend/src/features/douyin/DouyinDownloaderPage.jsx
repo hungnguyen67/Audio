@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Folder, FolderOpen, FolderPlus, Play, Plus, Trash2, Video, X } from 'lucide-react';
 import { douyinApi } from '../../api/douyin';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ModalFooter, ModalHeader } from '../../components/ModalChrome';
 import { Select } from '../../components/Select';
 import { toast } from '../../components/Toast';
 import { useDouyinDownloader } from './useDouyinDownloader';
@@ -53,6 +54,8 @@ export function DouyinDownloaderPage() {
   const [isBulkActionBusy, setIsBulkActionBusy] = useState(false);
   const [videoToDelete, setVideoToDelete] = useState(null);
   const [isDeletingVideo, setIsDeletingVideo] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState(null);
+  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState('');
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [moveFolderId, setMoveFolderId] = useState('');
@@ -164,17 +167,24 @@ export function DouyinDownloaderPage() {
 
   const handleDeleteFolder = async (event, folder) => {
     event.stopPropagation();
-    const count = folder.videoCount || 0;
-    if (!window.confirm(`Xóa thư mục “${folder.name}”? ${count ? `${count} video bên trong sẽ chuyển về thư mục gốc.` : ''}`)) return;
+    setFolderToDelete(folder);
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!folderToDelete || isDeletingFolder) return;
+    setIsDeletingFolder(true);
     try {
-      await deleteFolder(folder.id);
-      if (currentFolderId === folder.id) {
+      await deleteFolder(folderToDelete.id);
+      if (currentFolderId === folderToDelete.id) {
         setCurrentFolderId(null);
         clearSelection();
       }
-      toast.success('Đã xóa thư mục', `Đã xóa thư mục “${folder.name}”.`, 5000);
+      toast.success('Đã xóa thư mục', `Đã xóa thư mục “${folderToDelete.name}”.`, 5000);
     } catch (deleteError) {
       toast.error('Không thể xóa thư mục', deleteError.message || 'Vui lòng thử lại.', 5000);
+    } finally {
+      setIsDeletingFolder(false);
+      setFolderToDelete(null);
     }
   };
 
@@ -399,68 +409,70 @@ export function DouyinDownloaderPage() {
             aria-labelledby="dy-paste-title"
             onSubmit={handleSubmit}
           >
-            <h2 id="dy-paste-title" className="form-panel-title">Dán link Douyin</h2>
-            <div className="dy-paste-heading">
-              <label className="dy-paste-label" htmlFor="douyin-link-input">Link hoặc nội dung chia sẻ Douyin</label>
-              <Select
-                id="douyin-save-folder"
-                className="dy-save-folder-select"
-                ariaLabel="Lưu MP4 vào thư mục"
-                value={selectedFolderId}
-                options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
-                onChange={setSelectedFolderId}
-                disabled={isBusy}
-                placeholder="Chưa có thư mục"
-              />
-            </div>
-            <textarea
-              ref={inputRef}
-              id="douyin-link-input"
-              className="form-textarea"
-              rows={5}
-              placeholder={'Dán một hoặc nhiều link Douyin, mỗi link một dòng...\nhttps://www.douyin.com/video/...'}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              disabled={isBusy}
+            <ModalHeader
+              title="Dán link Douyin"
+              titleId="dy-paste-title"
+              onClose={() => setIsPasteModalOpen(false)}
+              closeDisabled={isBusy}
             />
-            {isBusy && (
-              <div className="dy-loading-card">
-                <div className="dy-loading-title">
-                  {batchProgress
-                    ? `Đang xử lý liên kết ${batchProgress.current}/${batchProgress.total} · đã lưu ${batchProgress.saved}, lỗi ${batchProgress.failed}`
-                    : status === 'saving' ? 'Đang tải MP4 và lưu vào cơ sở dữ liệu...' : 'Đang xử lý liên kết...'}
-                </div>
-                {batchProgress?.link && <div className="dy-batch-current-link">{batchProgress.link}</div>}
-                {status === 'loading' && (
-                  <div className="dy-loading-steps">
-                    {STEP_LABELS.map((label, index) => {
-                      const stepNumber = index + 1;
-                      const className = step > stepNumber ? 'dy-step done' : step === stepNumber ? 'dy-step active' : 'dy-step';
-                      return (
-                        <div key={label} className={className}>
-                          <span className="dy-step-dot" />
-                          <span>{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {status === 'saving' && <div className="dy-save-progress" aria-label="Đang lưu video" />}
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <div className="dy-paste-heading">
+                <label className="dy-paste-label" htmlFor="douyin-link-input">Link hoặc nội dung chia sẻ Douyin</label>
+                <Select
+                  id="douyin-save-folder"
+                  className="dy-save-folder-select"
+                  ariaLabel="Lưu MP4 vào thư mục"
+                  value={selectedFolderId}
+                  options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+                  onChange={setSelectedFolderId}
+                  disabled={isBusy}
+                  placeholder="Chưa có thư mục"
+                />
               </div>
-            )}
-            <div className="dy-folder-modal-actions">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setIsPasteModalOpen(false)}
+              <textarea
+                ref={inputRef}
+                id="douyin-link-input"
+                className="form-textarea"
+                rows={5}
+                placeholder={'Dán một hoặc nhiều link Douyin, mỗi link một dòng...\nhttps://www.douyin.com/video/...'}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
                 disabled={isBusy}
-              >
-                Đóng
-              </button>
-              <button type="submit" className="btn btn-dark" disabled={isBusy || !input.trim() || !selectedFolderId}>
-                {status === 'saving' ? 'Đang lưu...' : status === 'loading' ? 'Đang trích xuất...' : 'Trích xuất và lưu MP4'}
-              </button>
+              />
+              {isBusy && (
+                <div className="dy-loading-card">
+                  <div className="dy-loading-title">
+                    {batchProgress
+                      ? `Đang xử lý liên kết ${batchProgress.current}/${batchProgress.total} · đã lưu ${batchProgress.saved}, lỗi ${batchProgress.failed}`
+                      : status === 'saving' ? 'Đang tải MP4 và lưu vào cơ sở dữ liệu...' : 'Đang xử lý liên kết...'}
+                  </div>
+                  {batchProgress?.link && <div className="dy-batch-current-link">{batchProgress.link}</div>}
+                  {status === 'loading' && (
+                    <div className="dy-loading-steps">
+                      {STEP_LABELS.map((label, index) => {
+                        const stepNumber = index + 1;
+                        const className = step > stepNumber ? 'dy-step done' : step === stepNumber ? 'dy-step active' : 'dy-step';
+                        return (
+                          <div key={label} className={className}>
+                            <span className="dy-step-dot" />
+                            <span>{label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {status === 'saving' && <div className="dy-save-progress" aria-label="Đang lưu video" />}
+                </div>
+              )}
             </div>
+            <ModalFooter
+              secondaryLabel="Đóng"
+              onSecondary={() => setIsPasteModalOpen(false)}
+              secondaryDisabled={isBusy}
+              primaryLabel={status === 'saving' ? 'Đang lưu...' : status === 'loading' ? 'Đang trích xuất...' : 'Trích xuất và lưu MP4'}
+              primaryDisabled={isBusy || !input.trim() || !selectedFolderId}
+              primaryType="submit"
+            />
           </form>
         </div>
       )}
@@ -483,32 +495,34 @@ export function DouyinDownloaderPage() {
               handleCreateFolder();
             }}
           >
-            <h2 id="dy-create-folder-title" className="form-panel-title">Tạo thư mục mới</h2>
-            <label className="form-label" htmlFor="douyin-folder-name">Tên thư mục</label>
-            <input
-              ref={folderNameRef}
-              id="douyin-folder-name"
-              className="form-input"
-              type="text"
-              maxLength={100}
-              placeholder="Ví dụ: Video du lịch"
-              value={folderName}
-              onChange={(event) => setFolderName(event.target.value)}
-              disabled={isCreatingFolder}
+            <ModalHeader
+              title="Tạo thư mục mới"
+              titleId="dy-create-folder-title"
+              onClose={() => setIsCreateFolderOpen(false)}
+              closeDisabled={isCreatingFolder}
             />
-            <div className="dy-folder-modal-actions">
-              <button
-                type="button"
-                className="btn btn-outline"
-                onClick={() => setIsCreateFolderOpen(false)}
+            <div className="min-h-0 flex-1 overflow-y-auto p-6">
+              <label className="form-label" htmlFor="douyin-folder-name">Tên thư mục</label>
+              <input
+                ref={folderNameRef}
+                id="douyin-folder-name"
+                className="form-input"
+                type="text"
+                maxLength={100}
+                placeholder="Ví dụ: Video du lịch"
+                value={folderName}
+                onChange={(event) => setFolderName(event.target.value)}
                 disabled={isCreatingFolder}
-              >
-                Hủy
-              </button>
-              <button type="submit" className="btn btn-dark" disabled={!folderName.trim() || isCreatingFolder}>
-                {isCreatingFolder ? 'Đang tạo...' : 'Tạo thư mục'}
-              </button>
+              />
             </div>
+            <ModalFooter
+              secondaryLabel="Hủy"
+              onSecondary={() => setIsCreateFolderOpen(false)}
+              secondaryDisabled={isCreatingFolder}
+              primaryLabel={isCreatingFolder ? 'Đang tạo...' : 'Tạo thư mục'}
+              primaryDisabled={!folderName.trim() || isCreatingFolder}
+              primaryType="submit"
+            />
           </form>
         </div>
       )}
@@ -538,6 +552,20 @@ export function DouyinDownloaderPage() {
           onConfirm={confirmDeleteVideo}
           onCancel={() => {
             if (!isDeletingVideo) setVideoToDelete(null);
+          }}
+        />
+      )}
+
+      {folderToDelete && (
+        <ConfirmDialog
+          title="Xóa thư mục?"
+          description={`Xóa thư mục “${folderToDelete.name}”? ${folderToDelete.videoCount ? `${folderToDelete.videoCount} video bên trong sẽ chuyển về thư mục gốc.` : 'Thao tác này không thể hoàn tác.'}`}
+          confirmLabel="Xóa thư mục"
+          busyLabel="Đang xóa..."
+          busy={isDeletingFolder}
+          onConfirm={confirmDeleteFolder}
+          onCancel={() => {
+            if (!isDeletingFolder) setFolderToDelete(null);
           }}
         />
       )}

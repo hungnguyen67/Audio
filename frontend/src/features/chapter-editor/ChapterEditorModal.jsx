@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ModalHeader } from "../../components/ModalChrome";
 import { TxtImportPanel } from "../chapter-import/TxtImportPanel";
 import { UrlImportPanel } from "../chapter-import/UrlImportPanel";
 import { ChapterFields } from "./ChapterFields";
@@ -32,20 +32,12 @@ export function ChapterEditorModal({ editor }) {
           aria-modal="true"
           aria-labelledby="chapter-editor-title"
         >
-          <header className="form-panel-header">
-            <h2 className="form-panel-title" id="chapter-editor-title">
-              {title}
-            </h2>
-            <button
-              type="button"
-              className="form-panel-close"
-              aria-label="Đóng cửa sổ"
-              onClick={actions.close}
-              disabled={busy}
-            >
-              <X size={20} aria-hidden="true" />
-            </button>
-          </header>
+          <ModalHeader
+            title={title}
+            titleId="chapter-editor-title"
+            onClose={actions.close}
+            closeDisabled={busy}
+          />
           <div
             className={`form-modal-grid${story ? "" : " form-modal-grid-single"} flex-1 items-stretch overflow-y-hidden max-[860px]:overflow-y-auto`}
           >
