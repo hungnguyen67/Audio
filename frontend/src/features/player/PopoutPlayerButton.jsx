@@ -19,14 +19,16 @@ export function PopoutPlayerButton({
     const playerWindow = window.open(
       `/player-window?${params}`,
       "audio-story-player-window",
-      "popup,width=420,height=360,resizable=yes",
+      "popup,width=420,height=480,resizable=yes",
     );
     if (!playerWindow) {
       toast.error(
         "Không thể mở cửa sổ nghe",
         "Hãy cho phép trang web mở cửa sổ bật lên rồi thử lại.",
       );
+      return;
     }
+    playerWindow.focus();
   };
 
   return (

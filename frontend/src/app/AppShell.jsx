@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import { useStoriesAutoRefresh } from "../entities/stories/useStoriesAutoRefresh";
-import { MiniPlayer } from "../features/player/MiniPlayer";
 import { Sidebar } from "./Sidebar";
 
 export function AppShell() {
@@ -47,7 +46,6 @@ export function AppShell() {
           </main>
         </div>
       </div>
-      <MiniPlayer />
     </>
   );
 }

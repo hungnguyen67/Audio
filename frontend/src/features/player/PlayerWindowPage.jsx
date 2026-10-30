@@ -21,6 +21,26 @@ export function PlayerWindowPage() {
   const chapter = story?.chapters.find((item) => item.id === chapterId);
 
   useEffect(() => {
+    if (!started) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const page = document.querySelector(".player-window-page");
+      if (!page) return;
+
+      const styles = window.getComputedStyle(page);
+      const horizontalMargin = Number.parseFloat(styles.marginLeft) + Number.parseFloat(styles.marginRight);
+      const verticalMargin = Number.parseFloat(styles.marginTop) + Number.parseFloat(styles.marginBottom);
+      const frameWidth = window.outerWidth - window.innerWidth;
+      const frameHeight = window.outerHeight - window.innerHeight;
+      const width = Math.ceil(page.getBoundingClientRect().width + horizontalMargin + frameWidth);
+      const height = Math.ceil(page.getBoundingClientRect().height + verticalMargin + frameHeight);
+
+      window.resizeTo(width, height);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [started]);
+
+  useEffect(() => {
     if (status === "idle") dispatch(fetchStories());
   }, [dispatch, status]);
 
@@ -68,8 +88,10 @@ export function PlayerWindowPage() {
     <main className="player-window-page">
       {chapter ? (
         <>
-          <h1>{story?.title}</h1>
-          <p className="player-window-chapter">{`Chương ${chapter.number}`}</p>
+          <header className="player-window-heading">
+            <h1>Chạm để lắng nghe</h1>
+            <p>{`Đã nghe đến tập ${chapter.number}`}</p>
+          </header>
           {!started && (
             <button type="button" className="btn btn-dark player-window-start" onClick={startPlayback} disabled={starting}>
               {starting ? "Đang chuẩn bị audio..." : "Bắt đầu nghe"}

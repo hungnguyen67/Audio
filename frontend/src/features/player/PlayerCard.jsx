@@ -10,12 +10,12 @@ export function PlayerCard() {
   return (
     <div className="player-card">
       <div className="player-label">Đang phát</div>
-      <div className="player-status">{status}</div>
 
       {externalPlayerActive ? (
         <p className="player-external-status">Audio đang phát trong cửa sổ nghe riêng.</p>
       ) : (
         <>
+          <div className="player-status">{status}</div>
           <AudioControls />
 
           <div className="ctrl-row">
