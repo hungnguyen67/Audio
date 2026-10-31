@@ -1533,7 +1533,7 @@
   }
 
   .form-modal-backdrop .form-panel-single {
-    width: min(100%, 1024px);
+    width: min(100%, 800px);
   }
 
   .form-panel-header {
