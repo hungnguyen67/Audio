@@ -414,6 +414,16 @@ class AudioHandler(SimpleHTTPRequestHandler):
             "playback_rate": 1,
             "volume": 1,
         }
+        try:
+            voice = self.normalize_voice(settings["voice"])
+        except ValueError:
+            voice = f"edge:{VOICE}"
+            cursor.execute("UPDATE playback_settings SET voice = %s WHERE id = 1", (voice,))
+            connection.commit()
+            print(
+                "[playback] Giọng đã lưu không còn được hỗ trợ; đã chuyển về Hoài My.",
+                flush=True,
+            )
         cursor.execute(
             "SELECT chunk_index, position_seconds FROM chapter_progress WHERE chapter_id = %s",
             (chapter_id,),
@@ -422,7 +432,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         cursor.close()
         connection.close()
         self.send_json(HTTPStatus.OK, {
-            "voice": self.normalize_voice(settings["voice"]),
+            "voice": voice,
             "playbackRate": float(settings["playback_rate"]),
             "volume": float(settings["volume"]),
             "chunkIndex": progress["chunk_index"],

@@ -13,7 +13,7 @@ export function StoriesTable({
 
   return (
     <div className="section-card">
-      <div className="section-head">
+      <div className="section-head dy-library-toolbar">
         <div>
           <div className="section-title">Danh sách truyện</div>
           <div className="section-sub">{stories.length} đầu truyện</div>
@@ -21,18 +21,17 @@ export function StoriesTable({
       </div>
 
       <div className="adm-tbl">
-        <div className="dt-head">
-          <span>#</span>
-          <span>Tên truyện</span>
-          <span>Số chương</span>
-          <span className="story-actions-heading">Thao tác</span>
-        </div>
+        {stories.length > 0 && (
+          <div className="dt-head">
+            <span>#</span>
+            <span>Tên truyện</span>
+            <span>Số chương</span>
+            <span className="story-actions-heading">Thao tác</span>
+          </div>
+        )}
 
         {stories.length === 0 ? (
-          <div className="stories-empty-state">
-            <div className="stories-empty-title">Chưa có truyện nào</div>
-            <p>Danh sách truyện đang trống. Chọn “Tạo truyện” ở phía trên để bắt đầu thêm nội dung.</p>
-          </div>
+          <div className="dy-library-empty">Chưa có truyện nào.</div>
         ) : (
           rows.map((story, index) => (
             <div key={story.id} className="dt-row" onClick={() => onOpenStory(story)}>

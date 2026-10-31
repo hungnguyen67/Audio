@@ -514,6 +514,20 @@
     flex: 0 0 auto;
   }
 
+  .library-page .library-catalog-head.dy-library-toolbar {
+    min-height: unset;
+    padding: 14px 20px 12px;
+  }
+
+  .library-page .library-catalog-heading .section-title {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+
+  .library-page .library-catalog-heading .section-sub {
+    color: #94a3b8;
+  }
+
   .library-story-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -47,7 +47,7 @@ export function LibraryPage() {
       </div>
 
       <section className="library-catalog" aria-label="Thư viện truyện audio">
-        <div className="library-catalog-head">
+        <div className="library-catalog-head dy-library-toolbar">
           <div className="library-catalog-heading">
             <div className="section-title">Thư viện truyện</div>
             <div className="section-sub">{stories.length} truyện audio</div>
@@ -88,7 +88,7 @@ export function LibraryPage() {
           </div>
         ) : (
           <div
-            className={`library-empty${error ? " has-error" : ""}`}
+            className={`dy-library-empty${error ? " library-empty has-error" : ""}`}
             role={error ? "alert" : "status"}
           >
             {error ? (
@@ -96,13 +96,7 @@ export function LibraryPage() {
             ) : status === "loading" || status === "idle" ? (
               "Đang tải thư viện truyện..."
             ) : (
-              <>
-                <div className="stories-empty-title">Thư viện chưa có truyện nào</div>
-                <p>
-                  Truyện được thêm vào hệ thống sẽ xuất hiện tại đây để bạn chọn
-                  và bắt đầu nghe.
-                </p>
-              </>
+              "Chưa có truyện nào."
             )}
           </div>
         )}
