@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { EPISODE_TARGET_MINUTES } from "../../lib/textChapters";
+import {
+  EPISODE_CHARACTER_LIMIT,
+  EPISODE_TARGET_MINUTES,
+} from "../../lib/textChapters";
 import { useEditorContext } from "../chapter-editor/EditorContext";
 import { useTxtImport } from "./useTxtImport";
 
@@ -39,7 +42,8 @@ export function TxtImportPanel() {
         <span className="admin-import-txt-copy">
           <strong>{state.importing ? "Đang đọc tệp TXT..." : "Chọn tệp TXT"}</strong>
           <small>
-            Đọc toàn bộ TXT, chia khoảng {EPISODE_TARGET_MINUTES} phút/tập và tự đặt tên Tập 1, Tập 2...
+            Đọc toàn bộ TXT, chia khoảng {EPISODE_TARGET_MINUTES} phút/tập
+            (~{EPISODE_CHARACTER_LIMIT.toLocaleString("vi-VN")} ký tự) và tự đặt tên Tập 1, Tập 2...
           </small>
         </span>
       </button>

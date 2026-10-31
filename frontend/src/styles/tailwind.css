@@ -915,7 +915,7 @@
   /* â”€â”€ Story layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
   .story-wrap {
     display: grid;
-    grid-template-columns: 360px minmax(0, 1fr);
+    grid-template-columns: minmax(300px, 320px) minmax(0, 1fr);
     gap: 20px;
     align-items: start;
   }
@@ -934,7 +934,7 @@
     background: #fff;
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px;
+    padding: 16px;
     position: sticky;
     top: 68px;
   }
@@ -962,7 +962,7 @@
   }
 
   .player-card > .ctrl-row {
-    max-width: 320px;
+    max-width: 288px;
     margin-top: 12px;
     margin-bottom: 0;
     gap: 10px;

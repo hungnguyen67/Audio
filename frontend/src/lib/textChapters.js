@@ -1,6 +1,6 @@
 const chapterHeading = /^[ \t]*(?:(?:chương|chuong|chapter|chap\.?|tập|tap|phần|phan|part)\s+(\d+|[ivxlcdm]+)\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?|thứ\s+(\d+)\s+chương\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?)([^\r\n]*)[ \t]*$/gim;
 
-export const EPISODE_TARGET_MINUTES = 10;
+export const EPISODE_TARGET_MINUTES = 60;
 export const ESTIMATED_CHARACTERS_PER_MINUTE = 900;
 export const EPISODE_CHARACTER_LIMIT =
   EPISODE_TARGET_MINUTES * ESTIMATED_CHARACTERS_PER_MINUTE;

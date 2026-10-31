@@ -44,7 +44,7 @@ CHUNK_JOB_RETENTION_SECONDS = 60 * 60
 EDGE_TTS_CHUNK_SIZE = 1000
 # Edge TTS may reject overlapping requests for the same voice.
 EDGE_TTS_CHUNK_CONCURRENCY = TTS_CONCURRENCY
-EDGE_TTS_MAX_ATTEMPTS_PER_CHUNK = 8
+EDGE_TTS_ATTEMPTS_BEFORE_CHUNK_RESET = 3
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
 
 
@@ -998,8 +998,10 @@ class AudioHandler(SimpleHTTPRequestHandler):
 
             try:
                 attempt = 0
+                attempts_since_reset = 0
                 while True:
                     attempt += 1
+                    attempts_since_reset += 1
                     if active_chunk is not None:
                         with CHUNK_JOBS_LOCK:
                             active_chunk.update({
@@ -1060,6 +1062,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                             else error
                         )
                         retry_delay = _tts_retry_delay(retry_error, attempt)
+                        cycle_attempt = attempts_since_reset
                         with CHUNK_JOBS_LOCK:
                             if active_chunk is not None:
                                 active_chunk.update({
@@ -1067,18 +1070,19 @@ class AudioHandler(SimpleHTTPRequestHandler):
                                     "error": str(retry_error)[:160],
                                     "retryInSeconds": retry_delay,
                                 })
-                        if attempt >= EDGE_TTS_MAX_ATTEMPTS_PER_CHUNK:
+                        if attempts_since_reset >= EDGE_TTS_ATTEMPTS_BEFORE_CHUNK_RESET:
                             print(
-                                f"[audio {job_id}] [{chapter_tag}] Dừng đoạn {index + 1}/{len(chunks)} "
-                                f"sau {attempt} lần thử: {retry_error}.",
+                                f"[audio {job_id}] [{chapter_tag}] Đoạn {index + 1}/{len(chunks)} "
+                                f"lỗi {attempts_since_reset} lần liên tiếp; làm mới và chỉ tạo lại đoạn này. "
+                                f"Chương vẫn tiếp tục, chưa chuyển sang chương kế.",
                                 flush=True,
                             )
-                            raise RuntimeError(
-                                f"Đoạn {index + 1} thất bại sau {attempt} lần thử: {retry_error}"
-                            ) from error
+                            attempts_since_reset = 0
                         print(
                             f"[audio {job_id}] [{chapter_tag}] Lỗi đoạn {index + 1}/{len(chunks)} "
-                            f"(lần {attempt}, {type(retry_error).__name__}, "
+                            f"(lần {attempt}, "
+                            f"{cycle_attempt}/{EDGE_TTS_ATTEMPTS_BEFORE_CHUNK_RESET} trước lần làm mới, "
+                            f"{type(retry_error).__name__}, "
                             f"{time.perf_counter() - attempt_started_at:.2f}s, "
                             f"{received_audio_bytes:,} byte): {retry_error}. "
                             f"Thử lại sau {retry_delay}s.",
@@ -1102,32 +1106,30 @@ class AudioHandler(SimpleHTTPRequestHandler):
         ]
         completed_count = len(existing_chunks)
         results = []
-        for batch_start in range(0, len(pending_chunks), max_concurrency):
-            batch = pending_chunks[batch_start:batch_start + max_concurrency]
-            tasks = [
-                asyncio.create_task(synth_one(index, text))
-                for index, text in batch
-            ]
-            for task in asyncio.as_completed(tasks):
-                result = await task
-                results.append(result)
-                index, audio, chunk_latency, retries = result
-                chunk_latencies.append(chunk_latency)
-                retry_count += retries
-                retried_chunk_count += retries > 0
-                store_started_at = time.perf_counter()
-                self.store_chunk(job_id, cache_id, index, audio)
-                chunk_store_seconds += time.perf_counter() - store_started_at
-                if index == 0 and not first_chunk_ready:
-                    first_chunk_ready = True
-                    print(
-                        f"[audio {job_id}] [{chapter_tag}] Chunk đầu tiên sẵn sàng sau "
-                        f"{time.perf_counter() - generation_started_at:.2f}s.",
-                        flush=True,
-                    )
-                completed_count += 1
-                with CHUNK_JOBS_LOCK:
-                    CHUNK_JOBS[job_id]["completedCount"] = completed_count
+        tasks = [
+            asyncio.create_task(synth_one(index, text))
+            for index, text in pending_chunks
+        ]
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            results.append(result)
+            index, audio, chunk_latency, retries = result
+            chunk_latencies.append(chunk_latency)
+            retry_count += retries
+            retried_chunk_count += retries > 0
+            store_started_at = time.perf_counter()
+            self.store_chunk(job_id, cache_id, index, audio)
+            chunk_store_seconds += time.perf_counter() - store_started_at
+            if index == 0 and not first_chunk_ready:
+                first_chunk_ready = True
+                print(
+                    f"[audio {job_id}] [{chapter_tag}] Chunk đầu tiên sẵn sàng sau "
+                    f"{time.perf_counter() - generation_started_at:.2f}s.",
+                    flush=True,
+                )
+            completed_count += 1
+            with CHUNK_JOBS_LOCK:
+                CHUNK_JOBS[job_id]["completedCount"] = completed_count
         results.sort(key=lambda item: item[0])
         synthesis_wall_seconds = time.perf_counter() - generation_started_at
         average_chunk_seconds = sum(chunk_latencies) / len(chunk_latencies) if chunk_latencies else 0

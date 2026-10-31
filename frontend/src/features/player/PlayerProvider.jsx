@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import { audioApi } from "../../api/audio";
 import { progressApi } from "../../api/progress";
 import { selectStoryById } from "../../entities/stories/selectors";
-import { resolveAudioUrl, startProgressiveAudio } from "./audioJob";
+import { resolveAudioUrl, waitForAudioUrl } from "./audioJob";
 import { IDLE_STATUS } from "./constants";
 import { PLAYER_WINDOW_CHANNEL, postPlayerWindowMessage } from "./playerWindow";
 import { usePlaybackPersistence } from "./usePlaybackPersistence";
@@ -47,10 +47,6 @@ export function PlayerProvider({ children }) {
   const requestRef = useRef(null);
   const nextTimerRef = useRef(null);
   const loadedChapterIdRef = useRef(null);
-  const streamingJobRef = useRef(null);
-  const playbackStartedRef = useRef(false);
-  const playbackErrorRef = useRef(false);
-  const generationStatusRef = useRef(null);
   const externalPlayerActiveRef = useRef(false);
   const persistence = usePlaybackPersistence({ audio, loadedChapterIdRef, settings });
 
@@ -130,10 +126,6 @@ export function PlayerProvider({ children }) {
       requestRef.current = controller;
       const { signal } = controller;
 
-      streamingJobRef.current = null;
-      playbackStartedRef.current = false;
-      playbackErrorRef.current = false;
-      generationStatusRef.current = null;
       audio.pause();
       loadedChapterIdRef.current = null;
       setCurrent({ storyId, chapterId: target.id });
@@ -152,42 +144,19 @@ export function PlayerProvider({ children }) {
           ? Math.max(0, requestedPosition)
           : saved.positionSeconds || 0;
         if (source.jobId) {
-          streamingJobRef.current = source.jobId;
-          setStatus("Đang chuẩn bị audio để phát liền mạch...");
-          const { feedPromise } = await startProgressiveAudio(audio, source.jobId, {
+          setStatus("Đang tạo audio, chờ hoàn tất mới phát...");
+          const url = await waitForAudioUrl(source.jobId, {
             signal,
-            startAt,
             onProgress: (progress) => {
-              generationStatusRef.current = `Chương ${target.number} · ${progress}`;
-              setStatus(
-                playbackStartedRef.current
-                  ? `Đang phát · ${generationStatusRef.current}`
-                  : generationStatusRef.current,
-              );
+              setStatus(`Chương ${target.number} · ${progress}`);
             },
             onJobNotFound: () => audioApi.createJob(target.id, saved.voice),
-            onError: (streamError) => {
-              playbackErrorRef.current = true;
-              setStatus(`Audio đã tạo một phần; không thể tiếp tục tạo: ${streamError.message}`);
-            },
           });
-          feedPromise
-            .then(() => {
-              if (!signal.aborted && !playbackErrorRef.current) {
-                streamingJobRef.current = null;
-                generationStatusRef.current = `Đã tạo xong audio chương ${target.number}`;
-                setStatus(`Đang phát · ${generationStatusRef.current}`);
-              }
-            })
-            .catch((streamError) => {
-              if (!signal.aborted && !playbackErrorRef.current) {
-                playbackErrorRef.current = true;
-                setStatus(`Không thể tiếp tục tải audio: ${streamError.message}`);
-              }
-            });
-          loadedChapterIdRef.current = target.id;
-          playbackStartedRef.current = true;
-          return true;
+          signal.throwIfAborted();
+          setStatus("Đã tạo xong audio. Đang phát...");
+          const started = await loadAndPlay(audio, url, startAt, signal);
+          if (started) loadedChapterIdRef.current = target.id;
+          return started;
         } else {
           setStatus("Đang phát toàn bộ tập...");
           const started = await loadAndPlay(audio, source.url, startAt, signal);
@@ -211,10 +180,6 @@ export function PlayerProvider({ children }) {
     }
     persistence.flush();
     cancelPending();
-    streamingJobRef.current = null;
-    playbackStartedRef.current = false;
-    playbackErrorRef.current = false;
-    generationStatusRef.current = null;
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
@@ -261,27 +226,14 @@ export function PlayerProvider({ children }) {
     };
     const onError = () => {
       if (audio.getAttribute("src")) {
-        playbackErrorRef.current = true;
         setStatus("Không thể phát audio. Hãy tải lại trang và chọn lại chương.");
-      }
-    };
-    const onPlaying = () => {
-      playbackStartedRef.current = true;
-      if (streamingJobRef.current) {
-        setStatus(
-          generationStatusRef.current
-            ? `Đang phát · ${generationStatusRef.current}`
-            : "Đang phát audio · đang chờ tiến độ tạo",
-        );
       }
     };
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
-    audio.addEventListener("playing", onPlaying);
     return () => {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
-      audio.removeEventListener("playing", onPlaying);
     };
   }, [audio, play]);
 

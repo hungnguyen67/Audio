@@ -58,7 +58,6 @@ export function AudioControls() {
   const { currentTime, duration, minTime, paused, live, ready } = useAudioTime(audio);
   const [seekState, setSeekState] = useState(null);
   const seekingRef = useRef(false);
-  const sliderRef = useRef(null);
   const sliderMin = seekState?.min ?? minTime;
   const sliderMax = seekState?.max ?? duration;
   const seekRange = Math.max(0, sliderMax - sliderMin);
@@ -66,11 +65,6 @@ export function AudioControls() {
   const seekProgress = seekRange
     ? ((Math.min(displayedTime, sliderMax) - sliderMin) / seekRange) * 100
     : 0;
-  useEffect(() => {
-    const slider = sliderRef.current;
-    if (!slider || seekingRef.current || seekState) return;
-    slider.value = String(Math.min(duration || 0, Math.max(minTime, currentTime)));
-  }, [currentTime, duration, minTime, seekState]);
 
   useEffect(() => {
     const onSeeked = () => setSeekState(null);
@@ -81,10 +75,9 @@ export function AudioControls() {
   const finishSeeking = (value) => {
     if (!seekingRef.current) return;
     seekingRef.current = false;
-    const target = Number(value);
+    const target = Math.min(sliderMax, Math.max(sliderMin, Number(value)));
     audio.currentTime = target;
-    if (Math.abs(audio.currentTime - target) < 0.05) setSeekState(null);
-    else setSeekState((state) => state && { ...state, value: target });
+    setSeekState((state) => state && { ...state, value: target });
   };
 
   const togglePlay = () => {
@@ -111,8 +104,7 @@ export function AudioControls() {
             min={sliderMin}
             max={sliderMax || 0}
             step="0.1"
-            defaultValue={Math.min(sliderMax || 0, Math.max(sliderMin, displayedTime))}
-            ref={sliderRef}
+            value={Math.min(sliderMax || 0, Math.max(sliderMin, displayedTime))}
             style={{
               "--range-progress": `${seekProgress}%`,
             }}
@@ -130,8 +122,10 @@ export function AudioControls() {
               const value = Number(event.currentTarget.value);
               if (seekingRef.current) {
                 setSeekState((state) => state && { ...state, value });
+                return;
               }
-              else audio.currentTime = value;
+              setSeekState({ value, min: sliderMin, max: sliderMax });
+              audio.currentTime = value;
             }}
             onPointerUp={(event) => finishSeeking(event.currentTarget.value)}
             onPointerCancel={(event) => finishSeeking(event.currentTarget.value)}
@@ -139,7 +133,7 @@ export function AudioControls() {
           />
         </div>
         <span className="audio-time">
-          {formatTime(currentTime)} / {formatTime(duration)}{live ? " · đang tạo" : ""}
+          {formatTime(displayedTime)} / {formatTime(duration)}{live ? " · đang tạo" : ""}
         </span>
       </div>
     </div>
