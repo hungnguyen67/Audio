@@ -32,18 +32,27 @@ export function ModalFooter({
   onSecondary,
   secondaryDisabled = false,
   secondaryButtonRef,
+  buttonsAlign = "right",
+  primaryFirst = false,
   status,
   liveStatus,
 }) {
+  const alignButtonsLeft = buttonsAlign === "left";
+
   return (
     <footer className="form-footer">
       <div className="flex w-full min-w-0 items-center gap-3">
         {status && (
-          <div className="min-w-0 flex-1 text-right text-xs text-slate-500" aria-live="polite">
+          <div
+            className={`min-w-0 flex-1 text-right text-xs text-slate-500 ${alignButtonsLeft ? "order-2" : ""}`}
+            aria-live="polite"
+          >
             {status}
           </div>
         )}
-        <div className="form-footer-buttons !ml-auto">
+        <div
+          className={`form-footer-buttons ${alignButtonsLeft ? "order-1" : "!ml-auto"} ${primaryFirst ? "flex-row-reverse" : ""}`}
+        >
           <button
             ref={secondaryButtonRef}
             type="button"

@@ -1,15 +1,15 @@
-import { groupChapters, splitTextIntoChapters } from "../../lib/textChapters";
+import {
+  EPISODE_TARGET_MINUTES,
+  ESTIMATED_CHARACTERS_PER_MINUTE,
+  splitTextIntoEpisodes,
+} from "../../lib/textChapters";
 import { useEditorContext } from "../chapter-editor/EditorContext";
 
 export function useTxtImport() {
   const { state, dispatch } = useEditorContext();
 
-  return async ({ file, perEpisode }) => {
+  return async ({ file }) => {
     const fail = (message) => dispatch({ type: "IMPORT_FINISH", message });
-    const perEpisodeCount = Number(perEpisode);
-    if (!Number.isSafeInteger(perEpisodeCount) || perEpisodeCount < 1) {
-      return fail("Số chương gộp mỗi tập phải là số nguyên lớn hơn 0.");
-    }
     const hasWork = state.form.content.trim() || state.pending.chapters.length;
     if (
       hasWork &&
@@ -21,26 +21,19 @@ export function useTxtImport() {
     dispatch({ type: "IMPORT_START" });
     dispatch({ type: "IMPORT_MESSAGE", message: `Đang đọc ${file.name}...` });
     try {
-      const chapters = splitTextIntoChapters(await file.text());
-      if (!chapters.length) {
-        return fail(
-          'Không tìm thấy tiêu đề chương. Hãy dùng các dòng như "Chương 1: Tên chương" hoặc "Thứ 0001 chương Tên chương" trong tệp TXT.',
-        );
-      }
-      const episodes = groupChapters(chapters, perEpisodeCount);
+      const text = await file.text();
+      const episodes = splitTextIntoEpisodes(text);
+      const characterCount = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim().length;
+      if (!episodes.length) return fail("Tệp TXT không có nội dung.");
+
       dispatch({
         type: "IMPORT_FINISH",
-        pending: { chapters: episodes, mergedFrom: perEpisodeCount > 1 ? chapters.length : 0 },
+        pending: { chapters: episodes, mergedFrom: 0, fromTxt: true },
         patch: {
           story: state.form.story.trim() ? state.form.story : file.name.replace(/\.txt$/i, ""),
-          number: String(episodes[0].chapterNumber),
-          title: episodes[0].title,
           content: "",
         },
-        message:
-          perEpisodeCount === 1
-            ? `Đã tách ${chapters.length} chương từ tệp TXT. Kiểm tra danh sách rồi bấm Lưu.`
-            : `Đã tách ${chapters.length} chương nguồn thành ${episodes.length} tập, gộp tối đa ${perEpisodeCount} chương/tập. Kiểm tra danh sách rồi bấm Lưu.`,
+        message: `Đã đọc ${characterCount.toLocaleString("vi-VN")} ký tự và chia thành ${episodes.length} tập, khoảng ${EPISODE_TARGET_MINUTES} phút/tập (ước tính ${ESTIMATED_CHARACTERS_PER_MINUTE} ký tự/phút). Kiểm tra rồi bấm Lưu.`,
       });
     } catch (error) {
       fail(`Không thể đọc tệp TXT: ${error.message}`);

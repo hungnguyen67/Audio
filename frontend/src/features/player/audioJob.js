@@ -1,7 +1,8 @@
 import { audioApi } from "../../api/audio";
 
-const POLL_INTERVAL_MS = 500;
-const INITIAL_BUFFER_CHUNKS = 3;
+const POLL_INITIAL_INTERVAL_MS = 500;
+const POLL_MAX_INTERVAL_MS = 2000;
+const START_MIN_BUFFER_SECONDS = 20;
 const MAX_BUFFER_AHEAD_SECONDS = 300;
 const RETAINED_BUFFER_SECONDS = 120;
 
@@ -143,7 +144,7 @@ async function waitForBufferCapacity(sourceBuffer, audio, signal) {
     const bufferedEnd = ranges.length ? ranges.end(ranges.length - 1) : audio.currentTime;
     if (bufferedEnd - audio.currentTime <= MAX_BUFFER_AHEAD_SECONDS) return;
 
-    await sleep(POLL_INTERVAL_MS, signal);
+    await sleep(POLL_INITIAL_INTERVAL_MS, signal);
   }
 }
 
@@ -165,6 +166,7 @@ async function feedProgressiveAudio(
   sourceBuffer,
   jobId,
   signal,
+  startAt,
   onProgress,
   onReady,
   onError,
@@ -173,6 +175,7 @@ async function feedProgressiveAudio(
   let nextChunkIndex = 0;
   let activeJobId = jobId;
   let hasStarted = false;
+  let pollIntervalMs = POLL_INITIAL_INTERVAL_MS;
 
   try {
     while (true) {
@@ -199,6 +202,7 @@ async function feedProgressiveAudio(
       }
 
       onProgress(describeProgress(job));
+      let appendedChunk = false;
 
       while (true) {
         const chunk = findAudioChunk(job, nextChunkIndex);
@@ -209,8 +213,12 @@ async function feedProgressiveAudio(
         signal.throwIfAborted();
         await appendChunk(sourceBuffer, bytes, signal, audio);
         nextChunkIndex += 1;
+        appendedChunk = true;
 
-        if (!hasStarted && nextChunkIndex >= Math.min(INITIAL_BUFFER_CHUNKS, job.totalChunks)) {
+        const buffered = sourceBuffer.buffered;
+        const bufferedEnd = buffered.length ? buffered.end(buffered.length - 1) : 0;
+        const bufferedFromStartPosition = bufferedEnd - startAt;
+        if (!hasStarted && bufferedFromStartPosition >= START_MIN_BUFFER_SECONDS) {
           hasStarted = true;
           onReady();
         }
@@ -227,7 +235,10 @@ async function feedProgressiveAudio(
         if (mediaSource.readyState === "open") mediaSource.endOfStream();
         return;
       }
-      await sleep(POLL_INTERVAL_MS, signal);
+      pollIntervalMs = appendedChunk
+        ? POLL_INITIAL_INTERVAL_MS
+        : Math.min(POLL_MAX_INTERVAL_MS, Math.ceil(pollIntervalMs * 1.5));
+      await sleep(pollIntervalMs, signal);
     }
   } catch (error) {
     if (signal.aborted) throw error;
@@ -286,6 +297,7 @@ export async function startProgressiveAudio(
       sourceBuffer,
       jobId,
       signal,
+      startAt,
       onProgress,
       () => {
         if (readySettled) return;

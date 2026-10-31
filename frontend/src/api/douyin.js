@@ -1,6 +1,5 @@
 const DOUYIN_BASE = '/api/douyin';
 const LIBRARY_BASE = '/api/saved-douyin-videos';
-const FOLDERS_BASE = '/api/saved-douyin-folders';
 
 async function requestLibrary(path, options, base = LIBRARY_BASE) {
   const res = await fetch(`${base}${path}`, options);
@@ -44,16 +43,6 @@ export const douyinApi = {
 
   listSaved: () => requestLibrary('', { method: 'GET' }),
 
-  listFolders: () => requestLibrary('', { method: 'GET' }, FOLDERS_BASE),
-
-  createFolder: (name) => requestLibrary('', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  }, FOLDERS_BASE),
-
-  deleteFolder: (id) => requestLibrary(`/${id}`, { method: 'DELETE' }, FOLDERS_BASE),
-
   saveVideo: (video) => requestLibrary('', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -66,12 +55,6 @@ export const douyinApi = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids }),
-  }),
-
-  moveVideos: (ids, folderId) => requestLibrary('/move', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids, folderId }),
   }),
 
   savedMediaUrl: (id) => `${LIBRARY_BASE}/${id}/media`,

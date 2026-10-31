@@ -1,5 +1,10 @@
 const chapterHeading = /^[ \t]*(?:(?:chương|chuong|chapter|chap\.?|tập|tap|phần|phan|part)\s+(\d+|[ivxlcdm]+)\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?|thứ\s+(\d+)\s+chương\b[ \t]*(?:[:：.、\-–—][ \t]*|[ \t]+)?)([^\r\n]*)[ \t]*$/gim;
 
+export const EPISODE_TARGET_MINUTES = 10;
+export const ESTIMATED_CHARACTERS_PER_MINUTE = 900;
+export const EPISODE_CHARACTER_LIMIT =
+  EPISODE_TARGET_MINUTES * ESTIMATED_CHARACTERS_PER_MINUTE;
+
 function parseChapterNumber(value, fallback) {
   if (/^\d+$/.test(value)) return Number(value);
 
@@ -38,6 +43,68 @@ export function splitTextIntoChapters(text) {
       content,
     };
   }).filter((chapter) => chapter.content);
+}
+
+function findEpisodeBoundary(text, limit) {
+  const preferredMinimum = Math.floor(limit * 0.7);
+  const paragraphBoundary = text.lastIndexOf("\n\n", limit);
+  if (paragraphBoundary >= preferredMinimum) return paragraphBoundary;
+
+  const section = text.slice(0, limit);
+  const sentenceBoundaries = [...section.matchAll(/[.!?…]["'”’)]*\s+/g)];
+  const sentenceBoundary = sentenceBoundaries[sentenceBoundaries.length - 1];
+  if (sentenceBoundary) {
+    const boundary = sentenceBoundary.index + sentenceBoundary[0].trimEnd().length;
+    if (boundary >= preferredMinimum) return boundary;
+  }
+
+  const wordBoundary = Math.max(
+    text.lastIndexOf(" ", limit),
+    text.lastIndexOf("\n", limit),
+    text.lastIndexOf("\t", limit),
+  );
+  return wordBoundary >= preferredMinimum ? wordBoundary : limit;
+}
+
+export function splitTextIntoEpisodes(
+  text,
+  charactersPerEpisode = EPISODE_CHARACTER_LIMIT,
+) {
+  if (!Number.isSafeInteger(charactersPerEpisode) || charactersPerEpisode < 1) {
+    throw new RangeError("Số ký tự mỗi tập phải là số nguyên lớn hơn 0.");
+  }
+
+  let remaining = text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
+  const episodes = [];
+  while (remaining.length) {
+    if (remaining.length <= charactersPerEpisode) {
+      episodes.push(remaining);
+      break;
+    }
+
+    let boundary = findEpisodeBoundary(remaining, charactersPerEpisode);
+    if (
+      boundary > 0 &&
+      boundary < remaining.length &&
+      /[\uD800-\uDBFF]/.test(remaining[boundary - 1]) &&
+      /[\uDC00-\uDFFF]/.test(remaining[boundary])
+    ) {
+      boundary -= 1;
+    }
+
+    const episode = remaining.slice(0, boundary).trim();
+    if (!episode) {
+      throw new Error("Không thể chia nội dung TXT thành các tập.");
+    }
+    episodes.push(episode);
+    remaining = remaining.slice(boundary).trim();
+  }
+
+  return episodes.map((content, index) => ({
+    chapterNumber: index + 1,
+    title: `Tập ${index + 1}`,
+    content,
+  }));
 }
 
 export function groupChapters(chapters, chaptersPerEpisode) {

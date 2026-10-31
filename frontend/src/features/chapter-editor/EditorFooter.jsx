@@ -4,6 +4,7 @@ import { ModalFooter } from "../../components/ModalChrome";
 export function getSaveLabel({ saving, pending }) {
   const count = pending.chapters.length;
   if (saving) return "Đang lưu...";
+  if (pending.fromTxt) return `Lưu ${count} tập`;
   if (pending.mergedFrom) return count === 1 ? "Lưu 1 tập đã gộp" : `Lưu ${count} tập đã gộp`;
   return count ? `Lưu ${count} chương` : "Lưu";
 }
@@ -20,6 +21,8 @@ export function EditorFooter({ onSubmit }) {
       primaryLabel={getSaveLabel({ saving, pending })}
       onPrimary={onSubmit}
       primaryDisabled={busy}
+      buttonsAlign="left"
+      primaryFirst
       status={importStatus}
       liveStatus={status}
     />

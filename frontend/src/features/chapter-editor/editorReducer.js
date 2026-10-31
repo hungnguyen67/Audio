@@ -1,5 +1,5 @@
 const emptyForm = { story: "", content: "" };
-const emptyPending = { chapters: [], mergedFrom: 0 };
+const emptyPending = { chapters: [], mergedFrom: 0, fromTxt: false };
 
 export const initialEditorState = {
   open: false,

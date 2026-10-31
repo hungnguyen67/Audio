@@ -1792,24 +1792,6 @@
     margin-top: 8px;
   }
 
-  .admin-import-txt-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 7px;
-  }
-
-  .admin-import-txt-heading .form-label {
-    margin-bottom: 0;
-  }
-
-  .admin-import-txt-count {
-    flex: 0 0 88px;
-    width: 88px;
-    padding: 6px 8px;
-  }
-
   .admin-import-txt-button {
     display: flex;
     align-items: center;
@@ -2573,23 +2555,6 @@
     gap: 8px;
   }
 
-  .dy-move-actions {
-    display: flex;
-    gap: 6px;
-  }
-
-  .dy-move-actions .select-wrap {
-    width: auto;
-    min-width: 130px;
-    max-width: 190px;
-  }
-
-  .dy-move-actions .ctrl-select {
-    min-height: 34px;
-    padding: 0 26px 0 9px;
-    font-size: 12px;
-  }
-
   .dy-library-actions .btn,
   .dy-paste-actions .btn {
     display: inline-flex;
@@ -2612,148 +2577,6 @@
   .dy-library-content {
     min-height: 240px;
     padding: 14px 18px 20px;
-  }
-
-  .dy-folder-breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-height: 32px;
-    margin-bottom: 12px;
-    color: var(--text-muted);
-  }
-
-  .dy-folder-breadcrumb > button {
-    padding: 0;
-    color: var(--text-muted);
-    background: transparent;
-    border: 0;
-    font: inherit;
-    font-size: 12px;
-    cursor: pointer;
-  }
-
-  .dy-folder-breadcrumb > button:hover {
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .dy-folder-breadcrumb strong {
-    overflow: hidden;
-    color: var(--text);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .dy-folder-breadcrumb span {
-    margin-left: auto;
-    color: var(--text-muted);
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  .dy-folder-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 10px;
-    margin-bottom: 14px;
-  }
-
-  .dy-folder-item {
-    position: relative;
-    min-width: 0;
-    overflow: hidden;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    transition:
-      border-color 0.14s,
-      background 0.14s;
-  }
-
-  .dy-folder-item:hover,
-  .dy-folder-item:focus-within,
-  .dy-folder-item:active {
-    background: #fff;
-    border-color: #bfdbfe;
-  }
-
-  .dy-folder-tile {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    width: 100%;
-    min-height: 74px;
-    padding: 11px 42px 11px 12px;
-    color: inherit;
-    background: transparent;
-    border: 0;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .dy-folder-icon {
-    display: grid;
-    width: 42px;
-    height: 42px;
-    flex: 0 0 42px;
-    place-items: center;
-    color: var(--text-muted);
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-  }
-
-  .dy-folder-info {
-    display: grid;
-    min-width: 0;
-    gap: 4px;
-  }
-
-  .dy-folder-info strong {
-    overflow: hidden;
-    color: var(--text);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .dy-folder-info > span {
-    color: var(--text-muted);
-    font-size: 10px;
-  }
-
-  .dy-folder-delete {
-    position: absolute;
-    top: 50%;
-    right: 9px;
-    display: grid;
-    width: 28px;
-    height: 28px;
-    place-items: center;
-    color: var(--text-muted);
-    background: transparent;
-    border: 0;
-    border-radius: 6px;
-    cursor: pointer;
-    opacity: 0;
-    transform: translateY(-50%);
-    transition:
-      color 0.14s,
-      background 0.14s,
-      opacity 0.14s;
-  }
-
-  .dy-folder-item:hover .dy-folder-delete,
-  .dy-folder-item:focus-within .dy-folder-delete {
-    opacity: 1;
-  }
-
-  .dy-folder-delete:hover {
-    color: #dc2626;
-    background: transparent;
   }
 
   .dy-selection-toolbar {
@@ -2979,44 +2802,16 @@
   .dy-paste-label {
     display: block;
     min-width: 0;
-    margin: 0;
+    margin: 0 0 8px;
     color: var(--text);
     font-size: 13px;
     font-weight: 600;
-  }
-
-  .dy-paste-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  .dy-paste-heading .select-wrap {
-    width: min(190px, 42%);
-    flex: 0 0 auto;
-  }
-
-  .dy-paste-heading .ctrl-select {
-    min-height: 36px;
-    padding-top: 0;
-    padding-bottom: 0;
-    background: #fff;
   }
 
   .dy-paste-panel .form-textarea {
     min-height: 96px;
     font-family: ui-monospace, Consolas, monospace;
     font-size: 13px;
-  }
-
-  .dy-folder-modal .form-panel-single {
-    width: min(100%, 440px);
-  }
-
-  .dy-folder-modal .form-input {
-    min-height: 40px;
   }
 
   .dy-paste-actions {
@@ -3153,16 +2948,6 @@
       justify-content: flex-start;
     }
 
-    .dy-move-actions {
-      width: 100%;
-    }
-
-    .dy-move-actions .select-wrap {
-      min-width: 0;
-      max-width: none;
-      flex: 1;
-    }
-
     .dy-library-content {
       padding: 12px;
     }
@@ -3170,18 +2955,6 @@
     .dy-video-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
-    }
-
-    .dy-paste-heading {
-      gap: 8px;
-    }
-
-    .dy-paste-heading .select-wrap {
-      width: 48%;
-    }
-
-    .dy-folder-grid {
-      grid-template-columns: 1fr;
     }
 
     .dy-viewer-backdrop {

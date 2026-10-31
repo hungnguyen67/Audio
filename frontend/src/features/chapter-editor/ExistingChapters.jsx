@@ -95,7 +95,7 @@ export function ExistingChapters() {
         <span>Các chương hiện có</span>
         <button
           type="button"
-          className="h-[30px] shrink-0 cursor-pointer rounded-[7px] border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 [font-family:inherit] transition-colors hover:not-disabled:border-slate-300 hover:not-disabled:bg-slate-50 hover:not-disabled:text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+          className="h-[30px] shrink-0 cursor-pointer rounded-[7px] border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 [font-family:inherit] transition-colors hover:not-disabled:border-slate-300 hover:not-disabled:bg-slate-50 hover:not-disabled:text-slate-900 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-500"
           onClick={() => setConfirmOpen(true)}
           disabled={deleting || !state.checkedIds.length}
         >

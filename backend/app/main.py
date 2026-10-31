@@ -4,7 +4,6 @@ import ipaddress
 import json
 import os
 import re
-import subprocess
 import sys
 import threading
 import time
@@ -25,6 +24,8 @@ from app.repositories.database import get_connection
 from app.services.chapter_import import fetch_chapter_from_url
 from app.services.tts_service import (
     EDGE_TTS_RECEIVE_TIMEOUT_SECONDS,
+    TTS_CONCURRENCY,
+    get_tts_stats,
     minimum_audio_bytes_for_text,
     synthesize_text,
 )
@@ -37,16 +38,34 @@ AUDIO_JOBS_BY_KEY = {}
 AUDIO_JOB_START_LOCK = threading.Lock()
 AUTO_AUDIO_INTERVAL_SECONDS = 60
 AUTO_AUDIO_RETRY_MINUTES = 3
+AUTO_AUDIO_GENERATING_LEASE_MINUTES = 30
 AUTO_AUDIO_WAKE = threading.Event()
+CHUNK_JOB_RETENTION_SECONDS = 60 * 60
 EDGE_TTS_CHUNK_SIZE = 1000
 # Edge TTS may reject overlapping requests for the same voice.
-EDGE_TTS_CHUNK_CONCURRENCY = 1
+EDGE_TTS_CHUNK_CONCURRENCY = TTS_CONCURRENCY
 EDGE_TTS_MAX_ATTEMPTS_PER_CHUNK = 8
-EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES = 3
 EDGE_TTS_EXECUTOR = ThreadPoolExecutor(max_workers=EDGE_TTS_CHUNK_CONCURRENCY, thread_name_prefix="edge-tts")
-BACKEND_RESTART_LOCK = threading.Lock()
-BACKEND_RESTART_REQUESTED = False
-BACKEND_SERVER = None
+
+
+def _tts_retry_delay(error, attempt):
+    if isinstance(error, NoAudioReceived):
+        return min(60, 15 * 2 ** min(attempt - 1, 2))
+    return min(60, 2 ** min(attempt, 6))
+
+
+def _prune_finished_chunk_jobs_locked():
+    now = time.monotonic()
+    expired_jobs = [
+        job_id
+        for job_id, job in CHUNK_JOBS.items()
+        if job.get("status") in ("completed", "failed")
+        and now - job.get("_finishedAt", now) >= CHUNK_JOB_RETENTION_SECONDS
+    ]
+    for job_id in expired_jobs:
+        CHUNK_JOBS.pop(job_id, None)
+
+
 DOUYIN_MEDIA_HOSTS = (
     "douyin.com",
     "douyinvod.com",
@@ -60,59 +79,6 @@ DOUYIN_MEDIA_HOSTS = (
 )
 DOUYIN_MAX_MEDIA_BYTES = 512 * 1024 * 1024
 DOUYIN_MAX_DURATION_SECONDS = 20 * 60
-
-
-def restart_backend_after_tts_failures(job_id, chapter_tag, chunk_number):
-    global BACKEND_RESTART_REQUESTED
-
-    with BACKEND_RESTART_LOCK:
-        if BACKEND_RESTART_REQUESTED:
-            return
-        if os.environ.get("AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO") == "1":
-            print(
-                f"[audio {job_id}] [{chapter_tag}] Bỏ qua restart tự động: backend "
-                "đã restart một lần nhưng TTS vẫn tiếp tục lỗi.",
-                flush=True,
-            )
-            return
-        BACKEND_RESTART_REQUESTED = True
-
-    print(
-        f"[audio {job_id}] [{chapter_tag}] Đã gặp {EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES} "
-        f"lỗi NoAudioReceived liên tiếp ở đoạn {chunk_number}; đang khởi động lại backend.",
-        flush=True,
-    )
-
-    def restart():
-        global BACKEND_RESTART_REQUESTED
-
-        server = BACKEND_SERVER
-        if server is None:
-            print("[backend] Không thể restart: HTTP server chưa sẵn sàng.", flush=True)
-            with BACKEND_RESTART_LOCK:
-                BACKEND_RESTART_REQUESTED = False
-            return
-
-        environment = os.environ.copy()
-        environment["AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO"] = "1"
-        environment["AUDIO_BACKEND_WAIT_FOR_PORT"] = "1"
-        try:
-            subprocess.Popen(
-                [sys.executable, "-m", "app.main"],
-                cwd=os.getcwd(),
-                env=environment,
-            )
-        except OSError as error:
-            print(f"[backend] Không thể khởi động backend thay thế: {error}", flush=True)
-            with BACKEND_RESTART_LOCK:
-                BACKEND_RESTART_REQUESTED = False
-            return
-
-        server.shutdown()
-        server.server_close()
-        os._exit(0)
-
-    threading.Thread(target=restart, name="backend-restart", daemon=True).start()
 
 
 def is_allowed_douyin_media_url(url):
@@ -164,7 +130,8 @@ def auto_generate_missing_audio():
                     "FROM chapters c JOIN stories s ON s.id = c.story_id "
                     "LEFT JOIN chapter_audios ca ON ca.chapter_id = c.id "
                     "AND ca.voice = %s AND ca.content_hash = SHA2(c.content, 256) "
-                    "AND ca.status = 'ready' "
+                    "AND (ca.status = 'ready' OR (ca.status = 'generating' "
+                    f"AND ca.updated_at >= NOW() - INTERVAL {AUTO_AUDIO_GENERATING_LEASE_MINUTES} MINUTE)) "
                     "WHERE ca.id IS NULL "
                     "AND NOT EXISTS ("
                     "SELECT 1 FROM chapter_audios failed_ca "
@@ -231,9 +198,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
         if path == "/api/saved-douyin-videos":
             self.list_douyin_videos()
             return
-        if path == "/api/saved-douyin-folders":
-            self.list_douyin_folders()
-            return
 
         douyin_video_match = re.fullmatch(r"/api/saved-douyin-videos/([a-f0-9]{32})/media", path)
         if douyin_video_match:
@@ -246,20 +210,33 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 "edgeTtsVersion": edge_tts.__version__,
                 "chunkSize": EDGE_TTS_CHUNK_SIZE,
                 "chunkConcurrency": EDGE_TTS_CHUNK_CONCURRENCY,
+                "ttsStats": get_tts_stats(),
             })
             return
 
         audio_job_match = re.fullmatch(r"/api/audio-jobs/([a-f0-9]+)", path)
         if audio_job_match:
             with CHUNK_JOBS_LOCK:
+                _prune_finished_chunk_jobs_locked()
                 job = CHUNK_JOBS.get(audio_job_match.group(1))
                 public_job = {
-                    key: value for key, value in job.items() if key != "cacheId"
+                    key: value
+                    for key, value in job.items()
+                    if key not in {"cacheId", "_finishedAt"}
                 } if job else None
                 if public_job:
                     public_job["activeChunks"] = [
                         dict(chunk) for chunk in job.get("activeChunks", [])
                     ]
+            if not public_job:
+                try:
+                    public_job = self.get_persisted_audio_job(audio_job_match.group(1))
+                except mysql.connector.Error as error:
+                    self.send_json(
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                        {"message": f"Không đọc được tiến độ audio: {error}"},
+                    )
+                    return
             self.send_json(HTTPStatus.OK, public_job or {"status": "not_found"})
             return
 
@@ -307,15 +284,12 @@ class AudioHandler(SimpleHTTPRequestHandler):
         if path == "/api/saved-douyin-videos/delete":
             self.delete_douyin_videos()
             return
-        if path == "/api/saved-douyin-folders":
-            self.create_douyin_folder()
-            return
-        if path == "/api/saved-douyin-videos/move":
-            self.move_douyin_videos()
-            return
-
         if path == "/api/chapters":
             self.save_chapter()
+            return
+
+        if path == "/api/chapters/bulk":
+            self.save_chapters_bulk()
             return
 
         audio_job_match = re.fullmatch(r"/api/chapters/([a-f0-9]+)/audio-jobs", path)
@@ -365,11 +339,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
         self.update_chapter(chapter_match.group(1))
 
     def do_DELETE(self):
-        douyin_folder_match = re.fullmatch(r"/api/saved-douyin-folders/([a-f0-9]{32})", urlsplit(self.path).path)
-        if douyin_folder_match:
-            self.delete_douyin_folder(douyin_folder_match.group(1))
-            return
-
         douyin_video_match = re.fullmatch(r"/api/saved-douyin-videos/([a-f0-9]{32})", urlsplit(self.path).path)
         if douyin_video_match:
             self.delete_douyin_video(douyin_video_match.group(1))
@@ -582,6 +551,81 @@ class AudioHandler(SimpleHTTPRequestHandler):
         except Exception as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"message": str(error)})
 
+    def save_chapters_bulk(self):
+        connection = None
+        cursor = None
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 10 * 1024 * 1024:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Danh sách tập không hợp lệ hoặc quá lớn."})
+                return
+
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Dữ liệu yêu cầu không hợp lệ.")
+            story_id = str(payload.get("storyId", "")).strip()
+            chapters = payload.get("chapters")
+            if not re.fullmatch(r"[a-f0-9]{32}", story_id):
+                raise ValueError("Mã truyện không hợp lệ.")
+            if not isinstance(chapters, list) or not 1 <= len(chapters) <= 100:
+                raise ValueError("Mỗi lần lưu cần từ 1 đến 100 tập.")
+
+            rows = []
+            chapter_numbers = set()
+            for chapter in chapters:
+                if not isinstance(chapter, dict):
+                    raise ValueError("Thông tin tập không hợp lệ.")
+                chapter_number = chapter.get("chapterNumber")
+                title = chapter.get("title")
+                content = chapter.get("content")
+                if (
+                    type(chapter_number) is not int
+                    or chapter_number < 1
+                    or chapter_number in chapter_numbers
+                    or not isinstance(title, str)
+                    or not title.strip()
+                    or len(title.strip()) > 160
+                    or not isinstance(content, str)
+                    or not content.strip()
+                ):
+                    raise ValueError("Số tập, tên tập hoặc nội dung không hợp lệ.")
+                chapter_numbers.add(chapter_number)
+                rows.append((
+                    uuid.uuid4().hex,
+                    story_id,
+                    chapter_number,
+                    title.strip(),
+                    content.strip(),
+                ))
+
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute("SELECT id FROM stories WHERE id = %s", (story_id,))
+            if not cursor.fetchone():
+                self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy truyện."})
+                return
+            cursor.executemany(
+                "INSERT INTO chapters (id, story_id, chapter_number, title, content) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                rows,
+            )
+            connection.commit()
+            self.send_json(HTTPStatus.OK, {"saved": len(rows)})
+            AUTO_AUDIO_WAKE.set()
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+            if connection:
+                connection.rollback()
+            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Danh sách tập không hợp lệ: {error}"})
+        except mysql.connector.Error as error:
+            if connection:
+                connection.rollback()
+            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
     def update_chapter(self, chapter_id):
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -625,6 +669,59 @@ class AudioHandler(SimpleHTTPRequestHandler):
             self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy tập."})
             return
         self.send_json(HTTPStatus.OK, chapter)
+
+    def get_persisted_audio_job(self, cache_id):
+        connection = get_connection()
+        cursor = None
+        try:
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT ca.id, ca.status, ca.audio_id, ca.error_message, ca.voice, c.content "
+                "FROM chapter_audios ca JOIN chapters c ON c.id = ca.chapter_id WHERE ca.id = %s",
+                (cache_id,),
+            )
+            cache = cursor.fetchone()
+            if not cache:
+                return None
+
+            cursor.execute(
+                "SELECT id, chunk_index FROM audio_chunks "
+                "WHERE chapter_audio_id = %s ORDER BY chunk_index",
+                (cache_id,),
+            )
+            stored_chunks = cursor.fetchall()
+            status = {
+                "generating": "processing",
+                "ready": "completed",
+                "error": "failed",
+            }.get(cache["status"])
+            if not status:
+                return None
+
+            job = {
+                "status": status,
+                "completedChunks": [
+                    {
+                        "index": chunk["chunk_index"],
+                        "url": f"/api/audio-chunks/{chunk['id']}",
+                    }
+                    for chunk in stored_chunks
+                ],
+                "completedCount": len(stored_chunks),
+                "totalChunks": len(self.split_content(cache["content"])),
+                "activeChunks": [],
+                "voice": cache["voice"],
+            }
+            if status == "completed":
+                job["finalUrl"] = f"/api/audio/{cache['audio_id']}"
+            elif status == "failed":
+                job["message"] = cache["error_message"] or "Tạo audio thất bại."
+            return job
+        finally:
+            if cursor:
+                cursor.close()
+            if connection.is_connected():
+                connection.close()
 
     @staticmethod
     def split_content(content, max_size=EDGE_TTS_CHUNK_SIZE):
@@ -675,14 +772,20 @@ class AudioHandler(SimpleHTTPRequestHandler):
             voice = self.normalize_voice(query.get("voice", [None])[0])
             connection = get_connection()
             cursor = connection.cursor(dictionary=True)
-            cursor.execute("SELECT id, chapter_number, title, content FROM chapters WHERE id = %s", (chapter_id,))
+            cursor.execute(
+                "SELECT id, chapter_number, title, content FROM chapters WHERE id = %s FOR UPDATE",
+                (chapter_id,),
+            )
             chapter = cursor.fetchone()
             if not chapter:
                 self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy tập."})
                 return
             content_hash = hashlib.sha256(chapter["content"].encode("utf-8")).hexdigest()
             cursor.execute(
-                "SELECT id, audio_id, status FROM chapter_audios WHERE chapter_id = %s AND voice = %s AND content_hash = %s",
+                "SELECT id, audio_id, status, "
+                f"(status = 'generating' AND updated_at >= NOW() - INTERVAL {AUTO_AUDIO_GENERATING_LEASE_MINUTES} MINUTE) "
+                "AS generation_active FROM chapter_audios "
+                "WHERE chapter_id = %s AND voice = %s AND content_hash = %s FOR UPDATE",
                 (chapter_id, voice, content_hash),
             )
             cache = cursor.fetchone()
@@ -720,7 +823,16 @@ class AudioHandler(SimpleHTTPRequestHandler):
             with CHUNK_JOBS_LOCK:
                 existing_job = AUDIO_JOBS_BY_KEY.get(job_key)
             if existing_job:
+                connection.commit()
                 self.send_json(HTTPStatus.ACCEPTED, {"status": "processing", "jobId": existing_job})
+                return
+
+            if cache and cache["status"] == "generating" and cache["generation_active"]:
+                connection.commit()
+                self.send_json(
+                    HTTPStatus.ACCEPTED,
+                    {"status": "processing", "jobId": cache["id"]},
+                )
                 return
 
             if not cache:
@@ -739,6 +851,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
             connection = None
 
             with CHUNK_JOBS_LOCK:
+                _prune_finished_chunk_jobs_locked()
                 job_id = uuid.uuid4().hex
                 AUDIO_JOBS_BY_KEY[job_key] = job_id
                 CHUNK_JOBS[job_id] = {
@@ -792,6 +905,10 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 (cache_id, index),
             )
             chunk_id = cursor.fetchone()[0]
+            cursor.execute(
+                "UPDATE chapter_audios SET updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (cache_id,),
+            )
             connection.commit()
         except Exception:
             connection.rollback()
@@ -863,7 +980,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             received_audio_bytes = 0
             next_progress_bytes = 1024 * 1024
             chunk_started_at = 0.0
-            consecutive_no_audio_failures = 0
             active_chunk = None
 
             def report_audio_progress(byte_count):
@@ -936,17 +1052,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
                         os.environ.pop("AUDIO_TTS_RESTARTED_AFTER_NO_AUDIO", None)
                         return index, audio, time.perf_counter() - chunk_started_at, attempt - 1
                     except Exception as error:
-                        if isinstance(error, NoAudioReceived):
-                            consecutive_no_audio_failures += 1
-                            if consecutive_no_audio_failures >= EDGE_TTS_RESTART_AFTER_NO_AUDIO_FAILURES:
-                                restart_backend_after_tts_failures(
-                                    job_id,
-                                    chapter_tag,
-                                    index + 1,
-                                )
-                        else:
-                            consecutive_no_audio_failures = 0
-
                         retry_error = (
                             RuntimeError(
                                 f"Edge TTS không gửi dữ liệu trong {EDGE_TTS_RECEIVE_TIMEOUT_SECONDS} giây."
@@ -954,7 +1059,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
                             if isinstance(error, asyncio.TimeoutError)
                             else error
                         )
-                        retry_delay = min(60, 2 ** min(attempt, 6))
+                        retry_delay = _tts_retry_delay(retry_error, attempt)
                         with CHUNK_JOBS_LOCK:
                             if active_chunk is not None:
                                 active_chunk.update({
@@ -1127,7 +1232,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
             persist_seconds = time.perf_counter() - persist_started_at
 
             with CHUNK_JOBS_LOCK:
-                CHUNK_JOBS[job_id].update({"status": "completed", "finalUrl": f"/api/audio/{audio_id}"})
+                CHUNK_JOBS[job_id].update({
+                    "status": "completed",
+                    "finalUrl": f"/api/audio/{audio_id}",
+                    "_finishedAt": time.monotonic(),
+                })
             total_seconds = time.perf_counter() - job_started_at
             audio_mib = len(full_audio) / (1024 * 1024)
             audio_mib_per_second = audio_mib / total_seconds if total_seconds else 0
@@ -1165,7 +1274,11 @@ class AudioHandler(SimpleHTTPRequestHandler):
             cursor.close()
             connection.close()
             with CHUNK_JOBS_LOCK:
-                CHUNK_JOBS[job_id].update({"status": "failed", "message": str(error)})
+                CHUNK_JOBS[job_id].update({
+                    "status": "failed",
+                    "message": str(error),
+                    "_finishedAt": time.monotonic(),
+                })
         finally:
             with CHUNK_JOBS_LOCK:
                 AUDIO_JOBS_BY_KEY.pop(job_key, None)
@@ -1222,7 +1335,7 @@ class AudioHandler(SimpleHTTPRequestHandler):
         connection = get_connection()
         cursor = connection.cursor(dictionary=True)
         cursor.execute(
-            "SELECT id, folder_id AS folderId, aweme_id AS awemeId, title, author, cover_url AS cover, "
+            "SELECT id, aweme_id AS awemeId, title, author, cover_url AS cover, "
             "duration_seconds AS duration, file_size AS fileSize, created_at AS createdAt "
             "FROM douyin_videos ORDER BY created_at DESC"
         )
@@ -1233,114 +1346,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             video["createdAt"] = video["createdAt"].isoformat()
             video["mediaUrl"] = f"/api/saved-douyin-videos/{video['id']}/media"
         self.send_json(HTTPStatus.OK, videos)
-
-    def list_douyin_folders(self):
-        connection = get_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute(
-            "SELECT f.id, f.name, f.created_at AS createdAt, COUNT(v.id) AS videoCount "
-            "FROM douyin_folders f LEFT JOIN douyin_videos v ON v.folder_id = f.id "
-            "GROUP BY f.id, f.name, f.created_at ORDER BY f.name, f.created_at"
-        )
-        folders = cursor.fetchall()
-        cursor.close()
-        connection.close()
-        for folder in folders:
-            folder["createdAt"] = folder["createdAt"].isoformat()
-        self.send_json(HTTPStatus.OK, folders)
-
-    def create_douyin_folder(self):
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length < 1 or length > 4096:
-                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên thư mục không hợp lệ."})
-                return
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            name = str(payload.get("name", "")).strip()
-            if not name or len(name) > 100:
-                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Tên thư mục phải có từ 1 đến 100 ký tự."})
-                return
-
-            folder_id = uuid.uuid4().hex
-            connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute(
-                "INSERT INTO douyin_folders (id, name) VALUES (%s, %s)",
-                (folder_id, name),
-            )
-            connection.commit()
-            cursor.close()
-            connection.close()
-            self.send_json(
-                HTTPStatus.CREATED,
-                {
-                    "id": folder_id,
-                    "name": name,
-                    "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "videoCount": 0,
-                },
-            )
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Tên thư mục không hợp lệ: {error}"})
-        except mysql.connector.Error as error:
-            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
-
-    def delete_douyin_folder(self, folder_id):
-        connection = get_connection()
-        cursor = connection.cursor()
-        cursor.execute("DELETE FROM douyin_folders WHERE id = %s", (folder_id,))
-        deleted = cursor.rowcount
-        connection.commit()
-        cursor.close()
-        connection.close()
-        if not deleted:
-            self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục cần xóa."})
-            return
-        self.send_json(HTTPStatus.OK, {"deleted": deleted})
-
-    def move_douyin_videos(self):
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length < 1 or length > 16384:
-                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Danh sách video cần di chuyển không hợp lệ."})
-                return
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            ids = payload.get("ids") if isinstance(payload, dict) else None
-            folder_id = payload.get("folderId") if isinstance(payload, dict) else None
-            if (
-                not isinstance(ids, list)
-                or not ids
-                or len(ids) > 100
-                or any(not isinstance(video_id, str) or not re.fullmatch(r"[a-f0-9]{32}", video_id) for video_id in ids)
-                or (folder_id is not None and (not isinstance(folder_id, str) or not re.fullmatch(r"[a-f0-9]{32}", folder_id)))
-            ):
-                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Chọn từ 1 đến 100 video hợp lệ."})
-                return
-
-            unique_ids = list(set(ids))
-            connection = get_connection()
-            cursor = connection.cursor()
-            if folder_id:
-                cursor.execute("SELECT id FROM douyin_folders WHERE id = %s", (folder_id,))
-                if not cursor.fetchone():
-                    cursor.close()
-                    connection.close()
-                    self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục đích."})
-                    return
-            placeholders = ", ".join(["%s"] * len(unique_ids))
-            cursor.execute(
-                f"UPDATE douyin_videos SET folder_id = %s WHERE id IN ({placeholders})",
-                (folder_id, *unique_ids),
-            )
-            moved = cursor.rowcount
-            connection.commit()
-            cursor.close()
-            connection.close()
-            self.send_json(HTTPStatus.OK, {"moved": moved})
-        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"message": f"Danh sách video không hợp lệ: {error}"})
-        except mysql.connector.Error as error:
-            self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"message": f"Lỗi MySQL: {error}"})
 
     def save_douyin_video(self):
         try:
@@ -1358,7 +1363,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             author = str(payload.get("author", "")).strip()[:255]
             cover_url = str(payload.get("cover", "")).strip()[:2048]
             duration = int(payload.get("duration", 0) or 0)
-            folder_id = payload.get("folderId")
             if not title or not media_url:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Thiếu thông tin video cần lưu."})
                 return
@@ -1373,11 +1377,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     HTTPStatus.BAD_REQUEST,
                     {"message": "Chỉ hỗ trợ lưu video có thời lượng tối đa 20 phút."},
                 )
-                return
-            if folder_id is not None and (
-                not isinstance(folder_id, str) or not re.fullmatch(r"[a-f0-9]{32}", folder_id)
-            ):
-                self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Thư mục lưu video không hợp lệ."})
                 return
             if not is_allowed_douyin_media_url(media_url):
                 self.send_json(HTTPStatus.BAD_REQUEST, {"message": "Nguồn video không hợp lệ."})
@@ -1449,13 +1448,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
             video_id = uuid.uuid4().hex
             connection = get_connection()
             cursor = connection.cursor()
-            if folder_id:
-                cursor.execute("SELECT id FROM douyin_folders WHERE id = %s", (folder_id,))
-                if not cursor.fetchone():
-                    cursor.close()
-                    connection.close()
-                    self.send_json(HTTPStatus.NOT_FOUND, {"message": "Không tìm thấy thư mục lưu video."})
-                    return
             if aweme_id and aweme_id != "unknown":
                 cursor.execute("SELECT id FROM douyin_videos WHERE aweme_id = %s LIMIT 1", (aweme_id,))
                 existing = cursor.fetchone()
@@ -1469,9 +1461,9 @@ class AudioHandler(SimpleHTTPRequestHandler):
                     return
             cursor.execute(
                 "INSERT INTO douyin_videos "
-                "(id, folder_id, aweme_id, title, author, cover_url, duration_seconds, file_size, video_data) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (video_id, folder_id, aweme_id, title, author, cover_url, duration, len(media_data), media_data),
+                "(id, aweme_id, title, author, cover_url, duration_seconds, file_size, video_data) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (video_id, aweme_id, title, author, cover_url, duration, len(media_data), media_data),
             )
             connection.commit()
             cursor.close()
@@ -1480,7 +1472,6 @@ class AudioHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.CREATED,
                 {
                     "id": video_id,
-                    "folderId": folder_id,
                     "awemeId": aweme_id,
                     "title": title,
                     "author": author,
@@ -1789,16 +1780,8 @@ def ensure_douyin_tables():
     connection = get_connection()
     cursor = connection.cursor()
     cursor.execute(
-        "CREATE TABLE IF NOT EXISTS douyin_folders ("
-        "id CHAR(32) NOT NULL PRIMARY KEY,"
-        "name VARCHAR(100) NOT NULL,"
-        "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
-        "INDEX idx_douyin_folders_name (name))"
-    )
-    cursor.execute(
         "CREATE TABLE IF NOT EXISTS douyin_videos ("
         "id CHAR(32) NOT NULL PRIMARY KEY,"
-        "folder_id CHAR(32) NULL,"
         "aweme_id VARCHAR(128) NOT NULL DEFAULT '',"
         "title VARCHAR(1000) NOT NULL,"
         "author VARCHAR(255) NOT NULL DEFAULT '',"
@@ -1808,30 +1791,42 @@ def ensure_douyin_tables():
         "video_data LONGBLOB NOT NULL,"
         "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "INDEX idx_douyin_videos_created_at (created_at),"
-        "INDEX idx_douyin_videos_aweme_id (aweme_id),"
-        "INDEX idx_douyin_videos_folder_id (folder_id),"
-        "CONSTRAINT fk_douyin_videos_folder FOREIGN KEY (folder_id) "
-        "REFERENCES douyin_folders(id) ON DELETE SET NULL)"
+        "INDEX idx_douyin_videos_aweme_id (aweme_id))"
     )
-    cursor.execute("SHOW COLUMNS FROM douyin_videos LIKE 'folder_id'")
-    if not cursor.fetchone():
-        cursor.execute(
-            "ALTER TABLE douyin_videos ADD COLUMN folder_id CHAR(32) NULL, "
-            "ADD INDEX idx_douyin_videos_folder_id (folder_id)"
-        )
-    cursor.execute(
-        "SELECT CONSTRAINT_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS "
-        "WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'douyin_videos' "
-        "AND CONSTRAINT_NAME = 'fk_douyin_videos_folder'"
-    )
-    if not cursor.fetchone():
-        cursor.execute(
-            "ALTER TABLE douyin_videos ADD CONSTRAINT fk_douyin_videos_folder "
-            "FOREIGN KEY (folder_id) REFERENCES douyin_folders(id) ON DELETE SET NULL"
-        )
     connection.commit()
     cursor.close()
     connection.close()
+
+
+def recover_interrupted_audio_jobs():
+    connection = get_connection()
+    cursor = None
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE chapter_audios "
+            "SET status = 'error', "
+            "error_message = COALESCE(error_message, %s), "
+            f"updated_at = DATE_SUB(NOW(), INTERVAL {AUTO_AUDIO_RETRY_MINUTES + 1} MINUTE) "
+            "WHERE status = 'generating' "
+            f"AND updated_at < NOW() - INTERVAL {AUTO_AUDIO_GENERATING_LEASE_MINUTES} MINUTE",
+            ("Backend restarted before audio generation finished.",),
+        )
+        recovered_count = cursor.rowcount
+        connection.commit()
+        if recovered_count:
+            print(
+                f"[auto audio] Phục hồi {recovered_count} job bị gián đoạn; "
+                "sẽ tự xếp hàng lại và dùng các đoạn audio đã lưu.",
+                flush=True,
+            )
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        connection.close()
 
 
 if __name__ == "__main__":
@@ -1854,6 +1849,7 @@ if __name__ == "__main__":
                 raise
             time.sleep(1)
     BACKEND_SERVER = server
+    recover_interrupted_audio_jobs()
     threading.Thread(target=auto_generate_missing_audio, daemon=True).start()
     print(f"Audio Story Reader: http://{host}:{port} (edge-tts {edge_tts.__version__})", flush=True)
     server.serve_forever()

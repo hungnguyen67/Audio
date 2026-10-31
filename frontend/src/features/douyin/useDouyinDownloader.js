@@ -4,7 +4,6 @@ import { toast } from '../../components/Toast';
 
 const MAX_VIDEO_DURATION_SECONDS = 20 * 60;
 let cachedVideos = null;
-let cachedFolders = null;
 
 function getDouyinLinks(text) {
   const links = [...text.matchAll(/https?:\/\/[^\s"'<>]+/gi)]
@@ -17,11 +16,10 @@ export function useDouyinDownloader() {
   const [input, setInput] = useState('');
   const [status, setStatus] = useState('idle');
   const [videos, setVideos] = useState(() => cachedVideos ?? []);
-  const [folders, setFolders] = useState(() => cachedFolders ?? []);
   const [selectedIds, setSelectedIds] = useState([]);
   const [step, setStep] = useState(0);
   const [batchProgress, setBatchProgress] = useState(null);
-  const [loadingLibrary, setLoadingLibrary] = useState(() => cachedVideos === null || cachedFolders === null);
+  const [loadingLibrary, setLoadingLibrary] = useState(() => cachedVideos === null);
   const stepTimer1 = useRef(null);
   const stepTimer2 = useRef(null);
 
@@ -33,25 +31,12 @@ export function useDouyinDownloader() {
     });
   }, []);
 
-  const updateFolders = useCallback((updater) => {
-    setFolders((current) => {
-      const next = typeof updater === 'function' ? updater(current) : updater;
-      cachedFolders = next;
-      return next;
-    });
-  }, []);
-
   const refreshLibrary = useCallback(async () => {
-    if (cachedVideos === null || cachedFolders === null) setLoadingLibrary(true);
+    if (cachedVideos === null) setLoadingLibrary(true);
     try {
-      const [savedVideos, savedFolders] = await Promise.all([
-        douyinApi.listSaved(),
-        douyinApi.listFolders(),
-      ]);
+      const savedVideos = await douyinApi.listSaved();
       cachedVideos = savedVideos;
-      cachedFolders = savedFolders;
       setVideos(savedVideos);
-      setFolders(savedFolders);
     } catch (requestError) {
       toast.error('Không thể tải thư viện video', requestError.message, 5000);
     } finally {
@@ -67,7 +52,7 @@ export function useDouyinDownloader() {
     };
   }, [refreshLibrary]);
 
-  const extract = useCallback(async (rawInput, folderId) => {
+  const extract = useCallback(async (rawInput) => {
     const text = (typeof rawInput === 'string' ? rawInput : input).trim();
     if (!text) {
       toast.error('Thiếu liên kết Douyin', 'Vui lòng dán link chia sẻ từ Douyin.', 5000);
@@ -123,16 +108,10 @@ export function useDouyinDownloader() {
           author: data.author?.nickname || '',
           cover: data.cover || '',
           duration,
-          folderId: folderId || null,
           videoUrl,
         });
         savedVideos.push(saved);
         updateVideos((current) => [saved, ...current.filter((video) => video.id !== saved.id)]);
-        updateFolders((current) => current.map((folder) => (
-          folder.id === saved.folderId
-            ? { ...folder, videoCount: folder.videoCount + 1 }
-            : folder
-        )));
       } catch (requestError) {
         clearTimeout(stepTimer1.current);
         clearTimeout(stepTimer2.current);
@@ -174,7 +153,7 @@ export function useDouyinDownloader() {
         5000,
       );
     }
-  }, [input, refreshLibrary, updateFolders, updateVideos]);
+  }, [input, refreshLibrary, updateVideos]);
 
   const toggleSelected = useCallback((id) => {
     setSelectedIds((current) => (
@@ -183,7 +162,6 @@ export function useDouyinDownloader() {
   }, []);
 
   const selectOnly = useCallback((id) => setSelectedIds([id]), []);
-  const clearSelection = useCallback(() => setSelectedIds([]), []);
 
   const selectAll = useCallback((visibleIds) => {
     setSelectedIds((current) => (
@@ -195,72 +173,22 @@ export function useDouyinDownloader() {
 
   const deleteVideo = useCallback(async (id) => {
     await douyinApi.deleteVideo(id);
-    const deletedVideo = videos.find((video) => video.id === id);
     updateVideos((current) => current.filter((video) => video.id !== id));
-    if (deletedVideo?.folderId) {
-      updateFolders((current) => current.map((folder) => (
-        folder.id === deletedVideo.folderId
-          ? { ...folder, videoCount: Math.max(0, folder.videoCount - 1) }
-          : folder
-      )));
-    }
     setSelectedIds((current) => current.filter((selectedId) => selectedId !== id));
-  }, [updateFolders, updateVideos, videos]);
+  }, [updateVideos]);
 
   const deleteSelected = useCallback(async () => {
     if (!selectedIds.length) return;
     await douyinApi.deleteVideos(selectedIds);
-    const deletedVideos = videos.filter((video) => selectedIds.includes(video.id));
     updateVideos((current) => current.filter((video) => !selectedIds.includes(video.id)));
-    updateFolders((current) => current.map((folder) => ({
-      ...folder,
-      videoCount: Math.max(0, folder.videoCount - deletedVideos.filter((video) => video.folderId === folder.id).length),
-    })));
     setSelectedIds([]);
-  }, [selectedIds, updateFolders, updateVideos, videos]);
-
-  const createFolder = useCallback(async (name) => {
-    const folder = await douyinApi.createFolder(name);
-    updateFolders((current) => [...current, folder].sort((a, b) => a.name.localeCompare(b.name)));
-    return folder;
-  }, [updateFolders]);
-
-  const deleteFolder = useCallback(async (id) => {
-    await douyinApi.deleteFolder(id);
-    updateFolders((current) => current.filter((folder) => folder.id !== id));
-    updateVideos((current) => current.map((video) => (
-      video.folderId === id ? { ...video, folderId: null } : video
-    )));
-  }, [updateFolders, updateVideos]);
-
-  const moveSelected = useCallback(async (folderId) => {
-    if (!selectedIds.length) return;
-    await douyinApi.moveVideos(selectedIds, folderId);
-    const moving = new Set(selectedIds);
-    const oldCounts = new Map();
-    for (const video of videos) {
-      if (moving.has(video.id) && video.folderId) {
-        oldCounts.set(video.folderId, (oldCounts.get(video.folderId) || 0) + 1);
-      }
-    }
-    const movedCount = videos.filter((video) => moving.has(video.id)).length;
-    updateVideos((current) => current.map((video) => (
-      moving.has(video.id) ? { ...video, folderId: folderId || null } : video
-    )));
-    updateFolders((current) => current.map((folder) => {
-      const decrement = oldCounts.get(folder.id) || 0;
-      const increment = folder.id === folderId ? movedCount : 0;
-      return { ...folder, videoCount: Math.max(0, folder.videoCount - decrement + increment) };
-    }));
-    setSelectedIds([]);
-  }, [selectedIds, updateFolders, updateVideos, videos]);
+  }, [selectedIds, updateVideos]);
 
   return {
     input,
     setInput,
     status,
     videos,
-    folders,
     selectedIds,
     step,
     batchProgress,
@@ -269,12 +197,8 @@ export function useDouyinDownloader() {
     refreshLibrary,
     toggleSelected,
     selectOnly,
-    clearSelection,
     selectAll,
     deleteVideo,
     deleteSelected,
-    createFolder,
-    deleteFolder,
-    moveSelected,
   };
 }
